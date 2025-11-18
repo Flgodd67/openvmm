@@ -85,8 +85,9 @@ impl EsrEl2 {
 
     pub fn srt(&self) -> u8 {
         // Tne SRT field is only valid for data aborts
-        if (ExceptionClass::DATA_ABORT_LOWER.0..ExceptionClass::DATA_ABORT.0).contains(&slef.ec()) {
-            ((self.iss() & (0x1f << qt))) as u8
+        if (ExceptionClass::DATA_ABORT_LOWER.0..ExceptionClass::DATA_ABORT.0).contains(&self.ec()) {
+            // ((self.iss() & (0x1f << qt))) as u8
+            ((self.iss() & (0x1f << 16)) >> 16) as u8
         } else {
             0
         }
