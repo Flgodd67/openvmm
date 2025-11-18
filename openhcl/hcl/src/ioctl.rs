@@ -6,6 +6,7 @@
 mod deferred;
 
 pub mod aarch64;
+pub mod cca;
 pub mod snp;
 pub mod tdx;
 pub mod x64;
@@ -13,6 +14,7 @@ pub mod x64;
 use self::deferred::DeferredActionSlots;
 use self::ioctls::*;
 use crate::GuestVtl;
+use crate::ioctl::cca::RsiRealmConfig;
 use crate::ioctl::deferred::DeferredAction;
 use crate::mapped_page::MappedPage;
 use crate::protocol;
@@ -57,7 +59,8 @@ use hvdef::hypercall::HvInterceptParameters;
 use hvdef::hypercall::HvInterceptType;
 use hvdef::hypercall::HvRegisterAssoc;
 use hvdef::hypercall::HypercallOutput;
-use hvdef::hypercall::InitialVpContextX64;
+// use hvdef::hypercall::InitialVpContextX64;
+use hvdef::hypercall::InitialVpContext;
 use hvdef::hypercall::ModifyHostVisibility;
 use memory_range::MemoryRange;
 use pal::unix::pthread::*;
@@ -394,6 +397,10 @@ mod ioctls {
     const MSHV_INVLPGB: u16 = 0x36;
     const MSHV_TLBSYNC: u16 = 0x37;
     const MSHV_KICKCPUS: u16 = 0x38;
+    const MSHV_VTL_REALM_CONFIG: u16 = 0x40;
+    const MSHV_VTL_RSI_SYSREG_WRITE: u16 = 0x41;
+    const MSHV_VTL_RSI_SET_MEM_PERM: u16 = 0x42;
+
 
     #[repr(C)]
     #[derive(Copy, Clone)]
@@ -616,7 +623,73 @@ mod ioctls {
         MSHV_KICKCPUS,
         protocol::hcl_kick_cpus
     );
+
+    // CCA: Structure mirroring the data returned by RMM
+    // in the RSI_REALM_CONFIG call.
+    #[repr(C, align(0x1000))]
+    #[derive(Clone, Copy, Default)]
+    pub struct mshv_realm_config {
+        pub ipa_width: u64,
+        pub algorithm: u64,
+        pub num_aux_planes: u64,
+        pub gicv3_vtr: u64,
+    }
+
+    // CCA: Structure (mostly) mirroring the data taken by
+    // RMM in the RSI_PLANE_SYSREG_WRITE.
+    // `vtl` is converted into plane number in kernel driver.
+    #[repr(C, packed)]
+    #[derive(Clone, Copy, Default)]
+    pub struct mshv_rsi_sysreg_write {
+        pub vtl: u8,
+        pub sysreg: u64,
+        pub value: u64,
+    }
+
+    // CCA: Structure mirroring the data taken by
+    // RMM in the RSI_SET_MEM_PERM.
+    // Note: we hand over the plane number here,
+    // we should probably stay consistent with `sysreg_write`.
+    #[repr(C, packed)]
+    #[derive(Clone, Copy, Default)]
+    pub struct mshv_rsi_set_mem_perm {
+        pub plane: u8,
+        pub base_addr: u64,
+        pub top_addr: u64,
+    }
+
+    // CCA: Gets the RSI Realm Config value from the kernel
+    ioctl_read!(
+        hcl_realm_config,
+        MSHV_IOCTL,
+        MSHV_VTL_REALM_CONFIG,
+        mshv_realm_config
+    );
+
+    // CCA: Set the value of a system register
+    ioctl_write_ptr!(
+        hcl_rsi_sysreg_write,
+        MSHV_IOCTL,
+        MSHV_VTL_RSI_SYSREG_WRITE,
+        mshv_rsi_sysreg_write
+    );
+
+    // CCA: Assign the address described by `mshv_rsi_set_mem_perm`
+    // to a plane.
+    // Note: This is a simplification of the memory access configuration.
+    // The kernel driver does some stuff under the hood, making two RSI calls
+    // as part of this ioctl: RSI_MEM_SET_PERM_VALUE and RSI_MEM_SET_PERM_INDEX.
+    // Will need to decide how to design this interface and who maps the
+    // memory of a plane to the RSI calls needed to set it up.
+    ioctl_write_ptr!(
+        hcl_rsi_set_mem_perm,
+        MSHV_IOCTL,
+        MSHV_VTL_RSI_SET_MEM_PERM,
+        mshv_rsi_set_mem_perm
+    );
+
 }
+
 
 /// The `/dev/mshv_vtl_low` device for accessing VTL0 memory.
 pub struct MshvVtlLow {
@@ -1617,6 +1690,8 @@ pub enum IsolationType {
     Snp,
     /// Intel TDX.
     Tdx,
+    /// Arm CCA.
+    Cca,
 }
 
 impl IsolationType {
@@ -1627,7 +1702,7 @@ impl IsolationType {
 
     /// Returns whether the isolation type is hardware-backed.
     pub fn is_hardware_isolated(&self) -> bool {
-        matches!(self, Self::Snp | Self::Tdx)
+        matches!(self, Self::Snp | Self::Tdx | Self::Cca)
     }
 }
 
@@ -1660,6 +1735,8 @@ enum BackingState {
         vtl0_apic_page: MappedPage<ApicPage>,
         vtl1_apic_page: MemoryBlock,
     },
+    // TODO: CCA: add vGIC backing here
+    Cca,
 }
 
 #[derive(Debug)]
@@ -1731,6 +1808,7 @@ impl HclVp {
                     .allocate_dma_buffer(HV_PAGE_SIZE as usize)
                     .map_err(Error::AllocVp)?,
             },
+            IsolationType::Cca => BackingState::Cca,
         };
 
         Ok(Self {
@@ -2305,7 +2383,8 @@ impl Hcl {
                 unreachable!()
             }
         } else {
-            IsolationType::None
+            // TODO: CCA: Should check the guest arch before.
+            IsolationType::Cca
         };
 
         if isolation != supported_isolation {
@@ -2936,6 +3015,9 @@ impl Hcl {
                 .with_deny_lower_vtl_startup(caps.deny_lower_vtl_startup())
                 .with_intercept_page_available(caps.intercept_page_available())
                 .with_dr6_shared(true),
+            // TODO: CCA: figure out what capabilities to enable here?
+            // TMK seems to work without any.
+            IsolationType::Cca => hvdef::HvRegisterVsmCapabilities::new(),
         };
 
         assert_eq!(caps.dr6_shared(), self.dr6_shared());
@@ -3160,27 +3242,50 @@ impl Hcl {
         &self,
         vp_index: u32,
         vtl: GuestVtl,
-        hv_vp_context: InitialVpContextX64,
+        hv_vp_context: InitialVpContext,
     ) -> Result<(), HvError> {
         use hvdef::hypercall;
 
-        let header = hypercall::EnableVpVtlX64 {
-            partition_id: HV_PARTITION_ID_SELF,
-            vp_index,
-            target_vtl: vtl.into(),
-            reserved: [0; 3],
-            vp_vtl_context: hv_vp_context,
-        };
+        match hv_vp_context {
+            InitialVpContext::X64(ctx) => {
+                let header = hypercall::EnableVpVtlX64 {
+                    partition_id: HV_PARTITION_ID_SELF,
+                    vp_index,
+                    target_vtl: vtl.into(),
+                    reserved: [0; 3],
+                    vp_vtl_context: ctx,
+                };
+                // SAFETY: The input header and slice are the correct types for this hypercall.
+                //         The hypercall output is validated right after the hypercall is issued.
+                let status = unsafe {
+                    self.mshv_hvcall
+                        .hvcall(HypercallCode::HvCallEnableVpVtl, &header, &mut ())
+                        .expect("submitting hypercall should not fail")
+                };
 
-        // SAFETY: The input header and slice are the correct types for this hypercall.
-        //         The hypercall output is validated right after the hypercall is issued.
-        let status = unsafe {
-            self.mshv_hvcall
-                .hvcall(HypercallCode::HvCallEnableVpVtl, &header, &mut ())
-                .expect("submitting hypercall should not fail")
-        };
+                status.result()
+            }
+            // TODO: CCA: this is unchecked since hvcalls have been stubbed out
+            InitialVpContext::Arm64(ctx) => {
+                let header = hypercall::EnableVpVtlArm64 {
+                    partition_id: HV_PARTITION_ID_SELF,
+                    vp_index,
+                    target_vtl: vtl.into(),
+                    reserved: [0; 3],
+                    vp_vtl_context: ctx,
+                };
+                // SAFETY: The input header and slice are the correct types for this hypercall.
+                //         The hypercall output is validated right after the hypercall is issued.
+                let status = unsafe {
+                    self.mshv_hvcall
+                        .hvcall(HypercallCode::HvCallEnableVpVtl, &header, &mut ())
+                        .expect("submitting hypercall should not fail")
+                };
 
-        status.result()
+                status.result()
+            }
+        }
+
     }
 
     /// Gets the PFN for the VTL 1 VMSA
@@ -3346,4 +3451,24 @@ impl Hcl {
             hcl_kickcpus(self.mshv_vtl.file.as_raw_fd(), &data).expect("should always succeed");
         }
     }
+
+    // TODO: CCA: the following methods are mostly for passthrough.
+    // We might want to hide them for non-aarch64 platforms.
+    pub fn get_realm_config(&self) -> Result<RsiRealmConfig, Error> {
+        self.mshv_vtl.get_realm_config()
+    }
+
+    pub fn rsi_sysreg_write(&self, vtl: GuestVtl, sysreg: u64, value: u64) -> Result<(), HvError> {
+        self.mshv_vtl.rsi_sysreg_write(vtl, sysreg, value)
+    }
+
+    pub fn rsi_set_mem_perm(
+        &self,
+        vtl: GuestVtl,
+        base_addr: u64,
+        top_addr: u64,
+    ) -> Result<(), HvError> {
+        self.mshv_vtl.rsi_set_mem_perm(vtl, base_addr, top_addr)
+    }
+
 }

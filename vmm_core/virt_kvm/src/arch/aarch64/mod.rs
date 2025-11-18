@@ -15,6 +15,7 @@ use crate::KvmPartition;
 use crate::KvmPartitionInner;
 use crate::KvmRunVpError;
 use aarch64defs::SystemReg;
+use aarch64defs::Vendor;
 use bitfield_struct::bitfield;
 use core::panic;
 use hvdef::Vtl;
@@ -636,7 +637,9 @@ impl virt::ProtoPartition for KvmProtoPartition<'_> {
                     eval: false.into(),
                 })
                 .collect(),
-            caps: PartitionCapabilities {},
+            caps: PartitionCapabilities {
+                vendor: Vendor([0; 12]),
+            },
         };
 
         let partition = KvmPartition {

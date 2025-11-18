@@ -235,6 +235,8 @@ pub enum AttestationType {
     Vbs,
     /// Use trusted host-based attestation.
     Host,
+    /// Use Arm CCA for attestation.
+    Cca,
 }
 
 /// If required, attest platform. Gets VMGS datastore key.

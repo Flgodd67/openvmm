@@ -47,5 +47,7 @@ __pycache__
 flowey-out
 flowey-persist
 
+investigation.md
+
 # Node.js dependencies and artifacts
 node_modules/

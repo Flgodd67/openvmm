@@ -112,6 +112,7 @@ open_enum! {
         VBS = 1,
         SNP = 2,
         TDX = 3,
+        CCA = 4,
     }
 }
 
@@ -1365,6 +1366,23 @@ pub mod hypercall {
                     .into(),
             ];
             regs.into_iter()
+        }
+    }
+
+    pub enum InitialVpContext {
+        Arm64(InitialVpContextArm64),
+        X64(InitialVpContextX64),
+    }
+
+    impl From<InitialVpContextX64> for InitialVpContext {
+        fn from(ctx: InitialVpContextX64) -> Self {
+            InitialVpContext::X64(ctx)
+        }
+    }
+
+    impl From<InitialVpContextArm64> for InitialVpContext {
+        fn from(ctx: InitialVpContextArm64) -> Self {
+            InitialVpContext::Arm64(ctx)
         }
     }
 

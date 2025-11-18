@@ -14,6 +14,8 @@ mesh.workspace = true
 x86defs.workspace = true
 hvdef.workspace = true
 
+cca_guest_device.workspace = true
+
 base64.workspace = true
 base64-serde.workspace = true
 hex.workspace = true

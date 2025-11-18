@@ -5,6 +5,8 @@
 
 use super::synic::GlobalSynic;
 use super::synic::ProcessorSynic;
+#[cfg(guest_arch = "aarch64")]
+use aarch64defs::Vendor;
 use crate::VtlProtectAccess;
 use crate::pages::LockedPage;
 use crate::pages::OverlayPage;
@@ -25,6 +27,7 @@ use std::sync::atomic::Ordering;
 use virt::x86::MsrError;
 use vm_topology::processor::VpIndex;
 use vmcore::reference_time::ReferenceTimeSource;
+#[cfg(guest_arch = "x86_64")]
 use x86defs::cpuid::Vendor;
 use zerocopy::FromZeros;
 

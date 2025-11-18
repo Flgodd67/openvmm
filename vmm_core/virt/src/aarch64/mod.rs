@@ -6,6 +6,7 @@ pub mod vm;
 pub mod vp;
 
 use crate::state::StateElement;
+use aarch64defs::Vendor;
 use inspect::Inspect;
 use mesh_protobuf::Protobuf;
 use thiserror::Error;
@@ -30,7 +31,11 @@ impl Aarch64InitialRegs {
 }
 
 #[derive(Debug, Inspect)]
-pub struct Aarch64PartitionCapabilities {}
+pub struct Aarch64PartitionCapabilities {
+    #[inspect(display)]
+    pub vendor: Vendor,
+}
+
 
 #[derive(Error, Debug)]
 pub enum Aarch64PartitionCapabilitiesError {}

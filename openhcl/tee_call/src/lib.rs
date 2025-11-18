@@ -55,6 +55,8 @@ pub enum TeeType {
     Tdx,
     /// Virtualization-based Security (VBS)
     Vbs,
+    /// Arm CCA
+    Cca,
 }
 
 /// The result of the `get_attestation_report`.
@@ -209,5 +211,27 @@ impl TeeCall for VbsCall {
     /// Return TeeType::Vbs.
     fn tee_type(&self) -> TeeType {
         TeeType::Vbs
+    }
+}
+
+pub struct CcaCall;
+
+/// Basically no functionality yet
+impl TeeCall for CcaCall {
+    fn get_attestation_report(
+        &self,
+        _report_data: &[u8; REPORT_DATA_SIZE],
+    ) -> Result<GetAttestationReportResult, Error> {
+        unimplemented!()
+    }
+
+    /// Key derivation is currently not supported by CCA
+    fn supports_get_derived_key(&self) -> Option<&dyn TeeCallGetDerivedKey> {
+        None
+    }
+
+    /// Return TeeType::Cca.
+    fn tee_type(&self) -> TeeType {
+        TeeType::Cca
     }
 }

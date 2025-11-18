@@ -24,9 +24,24 @@ use vm_topology::processor::x86::X86Topology;
 use zerocopy::FromBytes as _;
 use zerocopy::IntoBytes;
 
+use nix::{
+    sys::{
+        mman::{MapFlags, ProtFlags, mmap},
+        statfs::statfs,
+    },
+    unistd::{ftruncate, mkstemp, unlink},
+};
+use std::{
+    num::NonZeroUsize,
+    os::unix::{fs::FileExt, io::FromRawFd},
+    path::Path,
+};
+
+
 /// Loads a TMK, returning the initial registers for the BSP.
 #[cfg_attr(not(guest_arch = "x86_64"), expect(dead_code))]
 pub fn load_x86(
+    offset_addr: Option<u64>,
     memory_layout: &MemoryLayout,
     guest_memory: &GuestMemory,
     processor_topology: &ProcessorTopology<X86Topology>,
@@ -35,7 +50,7 @@ pub fn load_x86(
     test: &TestInfo,
 ) -> anyhow::Result<Arc<virt::x86::X86InitialRegs>> {
     let mut loader = vm_loader::Loader::new(guest_memory.clone(), memory_layout, Vtl::Vtl0);
-    let load_info = load_common(&mut loader, tmk, test)?;
+    let load_info = load_common(offset_addr, &mut loader, tmk, test)?;
 
     let page_table_base = load_info.next_available_address;
     let page_tables = page_table::x64::build_page_tables_64(
@@ -83,8 +98,149 @@ pub fn load_x86(
     Ok(regs)
 }
 
+pub unsafe fn mmap_hugetlbfs(htlbfs_mount_dir: &Path, size: u64) -> Result<u64, String> {
+    // Perform preliminary checks on the request size.
+    if size == 0{
+        return Err("A mapping of size 0 is not permitted".to_string());
+    }
+
+    let size_as_usize = usize::try_from(size).map_err(|_| {
+        format!("The request size of {size} bytes is too large for this platform's address space")
+    })?;
+
+    let size_as_i64 = i64::try_from(size).map_err( |_| {
+        format!("The request size of {size} bytes is too large for an i64 offset")
+    })?;
+
+    let non_zero_size =
+        NonZeroUsize::new(size_as_usize).expect("Size was already checked to be non-zero");
+
+    let mpath = htlbfs_mount_dir.join("kvmtools-XXXXXX");
+    if mpath.exists() {
+        std::fs::remove_file(&mpath).map_err(|e| {
+            format!(
+                "Failed to remove existing file at '{}': {}",
+                mpath.display(),
+                e
+            )
+        })?;
+    }
+
+    let sfs = statfs(htlbfs_mount_dir).map_err(|e| {
+        format!(
+            "Failed to stat filesystem at '{}': {}",
+            htlbfs_mount_dir.display(),
+            e
+        )
+    })?;
+
+    // Verify that the filesystem is actually hugetlbfs.
+    if sfs.filesystem_type() != nix::sys::statfs::HUGETLBFS_MAGIC {
+        return Err(format!(
+            "The path '{}' is not on a hugetlbfs filesystem",
+            htlbfs_mount_dir.display()
+        ));
+    }
+
+    // Validate the huge page size (block size) against the request mapping size.
+    let blk_size = sfs.block_size() as u64;
+    if blk_size == 0 || blk_size > size {
+        return Err(format!(
+            "Invalid hugetlbfs page size ({blk_size} bytes) for the requested memory size ({size} bytes)"
+        ));
+    }
+
+    // Create a unique tempory file using the user_provided template.
+    let (fd, mpath) = mkstemp(&mpath).map_err(| e | {
+        format!(
+            "Failed to create temporary file using template '{}': {}",
+            mpath.display(),
+            e
+        )
+    })?;
+
+    // --- Start of RAII-managed resource scope ---
+    let file = unsafe { std::fs::File::from_raw_fd(fd)};
+
+    // Immediately unlink the file from the filesystem
+    unlink(&mpath).map_err(|e| {
+        format!(
+            "Failed to unlink temporary file at '{}': {}",
+            mpath.display(),
+            e
+        )
+    })?;
+
+    // Set the file size to the desired mapping size.
+    ftruncate(&file, size_as_i64)
+        .map_err(|e| format!("Failed to truncate temporary file to {size} bytes: {e}"))?;
+
+    // Memory-map the file
+    let addr = unsafe {
+        mmap(
+            None,
+            non_zero_size, 
+            ProtFlags::PROT_READ | ProtFlags::PROT_WRITE,
+            MapFlags::MAP_PRIVATE,
+            &file,
+            0,
+        )
+    }.map_err(| e | {
+        format!("Failed to memory-map {size} bytes: {e}")
+    })?;
+
+    // --- End of RAII-managed resource scope ---
+
+    // Return the memory address cast to a u64 integer.
+    Ok(addr.as_ptr() as u64)
+}
+
+pub unsafe fn virt_to_phys(vaddr: u64) -> Result<u64, String> {
+    // Constants based on the kernel's pagemap documentation.
+    const PFN_BITS: u64 = 55;
+    const PFN_MASK: u64 = (1 <<PFN_BITS) - 1;
+    const PAGE_PRESENT_BIT: u64 = 1 << 63;
+    const PAGEMAP_ENTRY_SIZE: u64 = size_of::<u64>() as u64;
+
+    // Get the system's page size. This is more reliable than using a hardcoded value.
+    let page_size = nix::unistd::sysconf(nix::unistd::SysconfVar::PAGE_SIZE)
+        .unwrap()
+        .unwrap() as u64;
+
+    if page_size == 0 {
+        return Err("Could not determine system page size".to_string());
+    }
+
+    // Open the pagemap file for the current process.
+    let pagemap_file = std::fs::File::open("/proc/self/pagemap").map_err( | e | {
+        format!("Failed to open /proc/self/pagemap (requires root or CAP_SYS_ADMIN): {e}")
+    })?;
+
+    let offset = (vaddr/page_size) * PAGEMAP_ENTRY_SIZE;
+
+    let mut entry_bytes = [0u8; 8];
+
+    pagemap_file
+        .read_exact_at(&mut entry_bytes, offset)
+        .map_err(|e| format!("Failed to read from /proc/self/pagemap at offset {offset}: {e}"))?;
+
+    let pagemap_entry = u64::from_ne_bytes(entry_bytes);
+
+    if (pagemap_entry & PAGE_PRESENT_BIT) == 0 {
+        return Err(format!(
+            "Page for virtual addree {vaddr:#x} is not present in RAM (swapped out or not mapped)"
+        ));
+    }
+
+    // The lower 55 bits contain the PFN
+    let pfn = pagemap_entry & PFN_MASK;
+    Ok(pfn * page_size);
+
+}
+
 #[cfg_attr(not(guest_arch = "aarch64"), expect(dead_code))]
 pub fn load_aarch64(
+    load_offset: Option<u64>,
     memory_layout: &MemoryLayout,
     guest_memory: &GuestMemory,
     processor_topology: &ProcessorTopology<Aarch64Topology>,
@@ -93,7 +249,7 @@ pub fn load_aarch64(
     test: &TestInfo,
 ) -> anyhow::Result<Arc<virt::aarch64::Aarch64InitialRegs>> {
     let mut loader = vm_loader::Loader::new(guest_memory.clone(), memory_layout, Vtl::Vtl0);
-    let load_info = load_common(&mut loader, tmk, test)?;
+    let load_info = load_common(load_offset, &mut loader, tmk, test)?;
 
     let mut import_reg = |reg| {
         loader
@@ -113,6 +269,7 @@ pub fn load_aarch64(
 }
 
 fn load_common<R: Debug + GuestArch>(
+    offset_addr: Option<u64>,
     loader: &mut vm_loader::Loader<'_, R>,
     tmk: &File,
     test: &TestInfo,
@@ -121,7 +278,7 @@ fn load_common<R: Debug + GuestArch>(
         loader,
         &mut &*tmk,
         0,
-        0x200000,
+        offset_addr.unwrap_or(0x98000000), // 0x200000
         false,
         loader::importer::BootPageAcceptance::Exclusive,
         "tmk",

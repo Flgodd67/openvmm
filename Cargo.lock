@@ -495,10 +495,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "cca_guest_device"
+version = "0.0.0"
+dependencies = [
+ "nix 0.30.1",
+ "static_assertions",
+ "thiserror 2.0.16",
+ "zerocopy 0.8.25",
+]
+
+[[package]]
 name = "cfg-if"
 version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2fd1289c04a9ea8cb22300a459a72a385d7c73d3259e2ed7dcb2af674838cfa9"
+
+[[package]]
+name = "cfg_aliases"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fd16c4719339c4530435d38e511904438d07cce7950afa3718a84ac36c10e89e"
 
 [[package]]
 name = "cfg_aliases"
@@ -2810,6 +2826,7 @@ dependencies = [
 name = "hcl"
 version = "0.0.0"
 dependencies = [
+ "aarch64defs",
  "anyhow",
  "bitfield-struct 0.11.0",
  "bitvec",
@@ -2826,6 +2843,7 @@ dependencies = [
  "open_enum",
  "pal",
  "parking_lot",
+ "rsi",
  "safe_intrinsics",
  "sidecar_client",
  "signal-hook",
@@ -2961,6 +2979,7 @@ checksum = "6dbf3de79e51f3d586ab4cb9d5c3e2c14aa28ed23d180cf89b4df0454a69cc87"
 name = "hv1_emulator"
 version = "0.0.0"
 dependencies = [
+ "aarch64defs",
  "build_rs_guest_arch",
  "guestmem",
  "hv1_structs",
@@ -4634,13 +4653,25 @@ dependencies = [
 
 [[package]]
 name = "nix"
+version = "0.28.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ab2156c4fce2f8df6c499cc1c763e4394b7482525bf2a9701c9d79d215f519e4"
+dependencies = [
+ "bitflags 2.9.3",
+ "cfg-if",
+ "cfg_aliases 0.1.1",
+ "libc",
+]
+
+[[package]]
+name = "nix"
 version = "0.30.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "74523f3a35e05aba87a1d978330aef40f67b0304ac79c1c00b294c9830543db6"
 dependencies = [
  "bitflags 2.9.3",
  "cfg-if",
- "cfg_aliases",
+ "cfg_aliases 0.2.1",
  "libc",
 ]
 
@@ -4980,6 +5011,7 @@ dependencies = [
  "base64 0.22.1",
  "base64-serde",
  "bitfield-struct 0.11.0",
+ "cca_guest_device",
  "guid",
  "hex",
  "hvdef",
@@ -6238,6 +6270,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "rsi"
+version = "0.0.0"
+dependencies = [
+ "aarch64defs",
+ "bitfield-struct 0.11.0",
+ "hvdef",
+ "memory_range",
+ "open_enum",
+ "tracing",
+]
+
+[[package]]
 name = "rusqlite"
 version = "0.37.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7176,6 +7220,7 @@ dependencies = [
 name = "tee_call"
 version = "0.0.0"
 dependencies = [
+ "cca_guest_device",
  "hcl",
  "hvdef",
  "sev_guest_device",
@@ -7380,8 +7425,11 @@ dependencies = [
  "guestmem",
  "hvdef",
  "loader",
+ "memory_range",
  "mesh",
+ "nix 0.28.0",
  "object 0.37.3",
+ "openhcl_dma_manager",
  "page_table",
  "pal_async",
  "pal_uring",
@@ -8125,6 +8173,7 @@ dependencies = [
  "memory_range",
  "pal_async",
  "parking_lot",
+ "rsi",
  "sparse_mmap",
  "thiserror 2.0.16",
  "tracelimit",
@@ -8519,6 +8568,7 @@ dependencies = [
  "pal_uring",
  "parking_lot",
  "pci_core",
+ "rsi",
  "safe_intrinsics",
  "safeatomic",
  "sidecar_client",

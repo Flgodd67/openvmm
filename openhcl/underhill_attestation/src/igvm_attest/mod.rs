@@ -71,6 +71,8 @@ pub enum ReportType {
     Snp,
     /// TDX report
     Tdx,
+    /// CCA report
+    Cca,
     /// Trusted VM report
     Tvm,
 }
@@ -82,6 +84,7 @@ impl ReportType {
             Self::Vbs => IgvmAttestReportType::VBS_VM_REPORT,
             Self::Snp => IgvmAttestReportType::SNP_VM_REPORT,
             Self::Tdx => IgvmAttestReportType::TDX_VM_REPORT,
+            Self::Cca => IgvmAttestReportType::CCA_VM_REPORT,
             Self::Tvm => IgvmAttestReportType::TVM_REPORT,
         }
     }
@@ -115,6 +118,7 @@ impl IgvmAttestRequestHelper {
             TeeType::Snp => ReportType::Snp,
             TeeType::Tdx => ReportType::Tdx,
             TeeType::Vbs => ReportType::Vbs,
+            TeeType::Cca => ReportType::Cca,
         };
 
         let attestation_vm_config =
@@ -151,6 +155,7 @@ impl IgvmAttestRequestHelper {
             Some(TeeType::Snp) => ReportType::Snp,
             Some(TeeType::Tdx) => ReportType::Tdx,
             Some(TeeType::Vbs) => ReportType::Vbs,
+            Some(TeeType::Cca) => ReportType::Cca,
             None => ReportType::Tvm,
         };
 
@@ -326,6 +331,7 @@ fn get_report_size(report_type: &ReportType) -> usize {
         ReportType::Vbs => openhcl_attestation_protocol::igvm_attest::get::VBS_VM_REPORT_SIZE,
         ReportType::Snp => openhcl_attestation_protocol::igvm_attest::get::SNP_VM_REPORT_SIZE,
         ReportType::Tdx => openhcl_attestation_protocol::igvm_attest::get::TDX_VM_REPORT_SIZE,
+        ReportType::Cca => openhcl_attestation_protocol::igvm_attest::get::CCA_VM_REPORT_SIZE,
         ReportType::Tvm => openhcl_attestation_protocol::igvm_attest::get::TVM_REPORT_SIZE,
     }
 }

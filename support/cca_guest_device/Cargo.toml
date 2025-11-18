@@ -1,0 +1,17 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT License.
+
+[package]
+name = "cca_guest_device"
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+static_assertions.workspace = true
+zerocopy.workspace = true
+[target.'cfg(target_os = "linux")'.dependencies]
+nix = { workspace = true, features = ["ioctl"] }
+thiserror.workspace = true
+
+[lints]
+workspace = true

@@ -1410,9 +1410,12 @@ impl<T, B: HardwareIsolatedBacking>
                 let mut hv_vp_context = hvdef::hypercall::InitialVpContextX64::new_zeroed();
                 hv_vp_context.rip = sev_control.into();
 
-                hv_vp_context
+                hv_vp_context.into()
             }
-            virt::IsolationType::Tdx => hvdef::hypercall::InitialVpContextX64::new_zeroed(),
+            virt::IsolationType::Tdx => hvdef::hypercall::InitialVpContextX64::new_zeroed().into(),
+            virt::IsolationType::Cca => {
+                hvdef::hypercall::InitialVpContextArm64::new_zeroed().into()
+            }
         };
 
         // Tell the hypervisor to enable VTL 1, and register any needed state

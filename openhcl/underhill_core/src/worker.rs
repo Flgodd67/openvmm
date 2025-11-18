@@ -2641,6 +2641,7 @@ async fn new_underhill_vm(
             virt::IsolationType::Snp => AttestationType::Snp,
             virt::IsolationType::Tdx => AttestationType::Tdx,
             virt::IsolationType::Vbs => AttestationType::Vbs,
+            virt::IsolationType::Cca => AttestationType::Cca,
             virt::IsolationType::None => AttestationType::Host,
         };
 

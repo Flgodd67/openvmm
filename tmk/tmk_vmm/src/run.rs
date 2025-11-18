@@ -6,10 +6,14 @@
 use crate::Options;
 use crate::load;
 use anyhow::Context as _;
+use vm_topology::memory::MemoryRangeWithNode;
+use core::ops::Range;
+use core::slice;
 use futures::StreamExt as _;
 use guestmem::GuestMemory;
 use hvdef::HvError;
 use hvdef::Vtl;
+use memory_range::MemoryRange;
 use pal_async::DefaultDriver;
 use std::sync::Arc;
 use virt::PartitionCapabilities;
@@ -19,12 +23,21 @@ use virt::VpIndex;
 use virt::io::CpuIo;
 use virt::vp::AccessVpState as _;
 use vm_topology::memory::MemoryLayout;
+#[cfg(guest_arch = "aarch64")]
+use vm_topology::memory::MemoryRangeWithNode;
 use vm_topology::processor::ProcessorTopology;
 use vm_topology::processor::TopologyBuilder;
 use vmcore::vmtime::VmTime;
 use vmcore::vmtime::VmTimeKeeper;
 use vmcore::vmtime::VmTimeSource;
 use zerocopy::TryFromBytes as _;
+
+pub struct HugeTlbMemory {
+    pub va: u64,
+    pub pa: u64,
+    pub size: u64,
+}
+
 
 pub const COMMAND_ADDRESS: u64 = 0xffff_0000;
 
@@ -33,6 +46,8 @@ pub struct CommonState {
     pub opts: Options,
     pub processor_topology: ProcessorTopology,
     pub memory_layout: MemoryLayout,
+    pub shared_memory_layout: MemoryLayout,
+    pub hugetlb_memory: Option<HugeTlbMemory>,
 }
 
 pub struct RunContext<'a> {
@@ -71,13 +86,69 @@ impl CommonState {
         .context("failed to build processor topology")?;
 
         let ram_size = 0x400000;
+        #[cfg(guest_arch = "x86_64")]
         let memory_layout = MemoryLayout::new(ram_size, &[], None).context("bad memory layout")?;
+
+        #[cfg(guest_arch = "aarch64")]
+        let mut memory_layout = MemoryLayout::new(ram_size, &[], None).context("bad memory layout")?;
+
+        #[cfg(guest_arch = "aarch64")]
+        let mut shared_memory_layout = MemoryLayout::new(ram_size, &[], None).context("bad memory layout")?;
+
+        // Prepare hugetlb memory for aarch64.
+        let hugetlb_memory = if cfg!(guest_arch = "aarch64") {
+
+            let hugetlbfs_va = unsafe { load::mmap_hugetlbfs(std::path::Path::new("/root/huge"), 0x02000000)}
+                                       .map_err(anyhow::Error::msg)
+                                       .context("failed to mmap hugetlbfs")?;
+            
+            unsafe { std::ptr::write_bytes(hugetlbfs_va as *mut u8, 0, 0x02000000); }
+
+            let hugetlbfs_pa = unsafe { load::virt_to_phys(hugetlbfs_va) }
+                                       .map_err(anyhow::Error::msg)
+                                       .context("failed to mmap hughetlbfs")?;
+            
+            memory_layout = MemoryLayout::new_from_ranges(
+                &[MemoryRangeWithNode {
+                    range: MemoryRange::new(Range {
+                        start: hugetlbfs_pa,
+                        end: hugetlbfs_pa + ram_size/2,
+                    }),
+                    vnode: 0,
+                }], 
+                &[],
+            )
+            .context("bad memory layout")?;
+
+            shared_memory_layout = MemoryLayout::new_from_ranges(
+                &[MemoryRangeWithNode {
+                    range: MemoryRange::new(Range {
+                        start: hugetlbfs_pa + ram_size/2,
+                        end: hugetlbfs_pa + ram_size,
+                    }),
+                    vnode: 0,
+                }],
+                &[],
+            )
+            .context("bad memory layout")?;
+
+            Some(HugeTlbMemory {
+                va: hugetlbfs_va,
+                pa: hugetlbfs_pa,
+                size: 0x02000000,
+            })
+
+        } else {
+            None;
+        };
 
         Ok(Self {
             driver,
             opts,
             processor_topology,
             memory_layout,
+            shared_memory_layout,
+            hugetlb_memory,
         })
     }
 
@@ -180,6 +251,7 @@ impl RunContext<'_> {
             #[cfg(guest_arch = "aarch64")]
             {
                 load::load_aarch64(
+                    Some(self.hugetlb_memory.as_ref().unwrap().pa),
                     &self.state.memory_layout,
                     guest_memory,
                     &self.state.processor_topology,
