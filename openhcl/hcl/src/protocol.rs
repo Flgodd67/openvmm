@@ -282,7 +282,7 @@ pub const RSI_PLANE_GIC_NUM_LRS: usize = 16;
 pub const RSI_PLANE_ENTER_FLAGS_TRAP_SIMD: u64 = 1 << 4;
 
 #[repr(C, align(0x1000))]
-#[derive(IntoBytes, Immutable, KnowLayout, FromBytes)]
+#[derive(IntoBytes, Immutable, KnownLayout, FromBytes)]
 pub struct cca_realm_config {
     pub ipa_width: u64,
     pub algorithm: u64,
@@ -368,12 +368,11 @@ pub struct cca_rsi_plane_exit {
 pub struct cca_rsi_plane_run {
 
     pub entry: cca_rsi_plane_entry,
-    pub pad4: [u8; 0x800 - size_of::<cca_rsi_plane_exit>()],
+    pub pad4: [u8; 0x800 - size_of::<cca_rsi_plane_entry>()],
 
     pub exit: cca_rsi_plane_exit,
     pub pad9: [u8; 0x800 - size_of::<cca_rsi_plane_exit>()],
 }
-
 const _: () = assert!(size_of::<cca_rsi_plane_run>() == 0x1000);
 
 

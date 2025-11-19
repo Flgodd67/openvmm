@@ -101,7 +101,7 @@ pub fn virt_to_phys(vaddr: u64) -> Result<u64, String> {
 
     // The lower 55 bits contain the PFN
     let pfn = pagemap_entry & PFN_MASK;
-    Ok(pfn * page_size);
+    Ok(pfn * page_size)
 }
 
 impl ProcessorRunner<'_, Cca> {
@@ -218,7 +218,7 @@ impl ProcessorRunner<'_, Cca> {
 
 impl<'a> super::BackingPrivate<'a> for Cca {
 
-    fn new(vp: &HclVp, sidecar: Options<&SidecarVp<'_>>, _hcl: &Hcl) -> Result<Self, NoRunner> {
+    fn new(vp: &HclVp, sidecar: Option<&SidecarVp<'_>>, _hcl: &Hcl) -> Result<Self, NoRunner> {
         assert!(sidecar.is_none());
         let super::BackingState::Cca = &vp.backing else {
             unreachable!()
@@ -229,7 +229,7 @@ impl<'a> super::BackingPrivate<'a> for Cca {
     }
 
     fn try_set_reg(
-        runner: &mut PrcessorRunner<'a, Self>,
+        runner: &mut ProcessorRunner<'a, Self>,
         _vtl: GuestVtl,
         name: HvRegisterName,
         value: HvRegisterValue
@@ -392,7 +392,7 @@ impl MshvVtl {
     }
 
     pub fn rsi_set_mem_perm(&self, vtl: GuestVtl, base_addr: u64, top_addr: u64) -> Result<(), hvdef::HvError> {
-        let sem_mem_perm = mshv_rsi_set_mem_perm {
+        let set_mem_perm = mshv_rsi_set_mem_perm {
             plane: if vtl == GuestVtl::Vtl0 {
                 1
             } else {
