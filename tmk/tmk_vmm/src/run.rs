@@ -138,7 +138,7 @@ impl CommonState {
             })
 
         } else {
-            None;
+            None
         };
 
         Ok(Self {
@@ -250,7 +250,7 @@ impl RunContext<'_> {
             #[cfg(guest_arch = "aarch64")]
             {
                 load::load_aarch64(
-                    Some(self.hugetlb_memory.as_ref().unwrap().pa),
+                    Some(self.state.hugetlb_memory.as_ref().unwrap().pa),
                     &self.state.memory_layout,
                     guest_memory,
                     &self.state.processor_topology,

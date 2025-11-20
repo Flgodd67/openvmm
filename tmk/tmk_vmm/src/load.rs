@@ -234,7 +234,7 @@ pub unsafe fn virt_to_phys(vaddr: u64) -> Result<u64, String> {
 
     // The lower 55 bits contain the PFN
     let pfn = pagemap_entry & PFN_MASK;
-    Ok(pfn * page_size);
+    Ok(pfn * page_size)
 
 }
 
