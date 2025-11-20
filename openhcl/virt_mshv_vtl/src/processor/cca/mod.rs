@@ -30,7 +30,6 @@ use virt::{VpHaltReason, aarch64::vp::AccessVpState};
 use virt_support_aarch64emu::translate::TranslationRegisters;
 use crate::processor::InterceptMessageState;
 use hvdef::HvRegisterCrInterceptControl;
-use hv1_emulator::synic::ProcessorSynic;
 
 use super::{BackingSharedParams, UhProcessor, private::BackingPrivate, vp_state::UhVpStateAccess};
 
@@ -541,7 +540,7 @@ impl HardwareIsolatedBacking for CcaBacked {
         shared: &'a Self::Shared,
     ) -> impl TlbFlushLockAccess + 'a {
 
-        let vp_index_t = vp_index.unwrap_or(default_vp_index());
+        let vp_index_t = vp_index.unwrap_or(| | VpIndex::new(0));
 
         CcaTlbLockFlushAccess {
             vp_index: vp_index_t,

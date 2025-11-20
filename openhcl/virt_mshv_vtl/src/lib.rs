@@ -136,6 +136,7 @@ use zerocopy::FromZeros;
 use zerocopy::Immutable;
 use zerocopy::IntoBytes;
 use zerocopy::KnownLayout;
+use crate::processor::HardwareIsolatedBacking;
 
 /// General error returned by operations.
 #[derive(Error, Debug)]
