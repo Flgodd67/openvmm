@@ -575,12 +575,41 @@ impl HardwareIsolatedBacking for CcaBacked {
 
     }
 
+    // #[cfg_attr(guest_arch = "aarch64", expect(dead_code))]
+    // pub(crate) struct InterceptMessageState {
+    //     instruction_length_and_cr8: u8,
+    //     cpl: u8,
+    //     efer_lma: bool,
+    //     cs: hvdef::HvX64SegmentRegister,
+    //     rip: u64,
+    //     rflags: u64,
+    //     rax: u64,
+    //     rdx: u64,
+    //     rcx: u64,
+    //     rsi: u64,
+    //     rdi: u64,
+    //     optional: Option<InterceptMessageOptionalState>,
+    // }
+
     fn intercept_message_state(
         this: &UhProcessor<'_, Self>,
         vtl: GuestVtl,
         include_optional_state: bool,
     ) -> InterceptMessageState{
-        InterceptMessageState {..}
+        InterceptMessageState {
+            instruction_length_and_cr8: 0,
+            cpl: 0,
+            efer_lma: false,
+            cs: hvdef::HvX64SegmentRegister::defaultArm64(),
+            rip: 0,
+            rflags: 0,
+            rax: 0,
+            rdx: 0,
+            rcx: 0,
+            rsi: 0,
+            rdi: 0,
+            optional: None,
+        }
     }
 
     fn cr0(this: &UhProcessor<'_, Self>, vtl: GuestVtl) -> u64 {
