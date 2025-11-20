@@ -293,7 +293,6 @@ impl MemoryAcceptor {
             }
             IsolationType::Cca => {
                 // TODO: CCA: anything to do here?
-                Ok(())
             }
         }
     }
