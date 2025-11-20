@@ -540,7 +540,7 @@ impl HardwareIsolatedBacking for CcaBacked {
         shared: &'a Self::Shared,
     ) -> impl TlbFlushLockAccess + 'a {
 
-        let vp_index_t = vp_index.unwrap_or(| | VpIndex::new(0));
+        let vp_index_t = vp_index.unwrap_or_else(|| VpIndex::new(0));
 
         CcaTlbLockFlushAccess {
             vp_index: vp_index_t,
@@ -580,7 +580,7 @@ impl HardwareIsolatedBacking for CcaBacked {
         vtl: GuestVtl,
         include_optional_state: bool,
     ) -> InterceptMessageState{
-
+        InterceptMessageState {..}
     }
 
     fn cr0(this: &UhProcessor<'_, Self>, vtl: GuestVtl) -> u64 {
