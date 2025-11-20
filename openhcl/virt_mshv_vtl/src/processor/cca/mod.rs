@@ -30,6 +30,10 @@ use virt_support_aarch64emu::translate::TranslationRegisters;
 
 use super::{BackingSharedParams, UhProcessor, private::BackingPrivate, vp_state::UhVpStateAccess};
 
+#[derive(Debug, Error)]
+#[error("failed to run")]
+struct CcaRunVpError(#[source] hcl::ioctl::Error);
+
 // TODO: CCA: what is this needed for?
 enum UhDirectOverlay {
     Sipp,
@@ -215,7 +219,7 @@ impl BackingPrivate for CcaBacked {
         this: &mut UhProcessor<'_, Self>,
         dev: &impl CpuIo,
         _stop: &mut virt::StopVp<'_>,
-    ) -> Result<(), VpHaltReason<UhRunVpError>> {
+    ) -> Result<(), VpHaltReason> {
         // TODO: CCA: TDX implementation handled "deliverability notifications" here,
         // no clue what they're about, potentially some VBS stuff?
 
@@ -227,7 +231,12 @@ impl BackingPrivate for CcaBacked {
         let intercepted = this
             .runner
             .run()
-            .map_err(|e| VpHaltReason::Hypervisor(UhRunVpError::Run(e)))?;
+            .map_err(|e| dev.fatal_error(CcaRunVpError(e).into()))?;
+
+        // let mut has_intercept = self
+        //     .runner
+        //     .run()
+        //     .map_err(|e| dev.fatal_error(SnpRunVpError(e).into()))?;
 
         // Preserve the plane context, so we can restore it later.
         this.preserve_plane_context();
@@ -295,9 +304,8 @@ impl BackingPrivate for CcaBacked {
         _this: &mut UhProcessor<'_, Self>,
         _vtl: GuestVtl,
         _scan_irr: bool,
-    ) -> Result<(), UhRunVpError> {
+    ){
         // TODO: CCA: poll GIC?
-        Ok(())
     }
 
     fn request_extint_readiness(_this: &mut UhProcessor<'_, Self>) {
@@ -336,7 +344,7 @@ impl BackingPrivate for CcaBacked {
     fn handle_vp_start_enable_vtl_wake(
         _this: &mut UhProcessor<'_, Self>,
         _vtl: GuestVtl,
-    ) -> Result<(), UhRunVpError> {
+    ){
         todo!()
     }
 
