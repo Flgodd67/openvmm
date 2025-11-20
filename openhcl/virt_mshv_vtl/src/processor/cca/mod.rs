@@ -288,7 +288,7 @@ impl BackingPrivate for CcaBacked {
             first_scan_irr: &mut bool,
             dev: &impl CpuIo,
         ) -> bool{
-            Ok(false)
+            false
         }
 
     fn poll_apic(
@@ -532,7 +532,7 @@ impl HardwareIsolatedBacking for CcaBacked {
         let vp_index_t = vp_index.unwrap_or(default_vp_index());
 
         CcaTlbLockFlushAccess {
-            vp_index_t,
+            vp_index: vp_index_t,
             partition,
             shared,
         }
@@ -553,7 +553,7 @@ impl HardwareIsolatedBacking for CcaBacked {
         check_rflags: bool,
         dev: &impl CpuIo,
     ) -> bool{
-        Ok(false)
+        false
     }
 
     fn set_pending_exception(

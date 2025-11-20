@@ -60,7 +60,6 @@ use bitvec::vec::BitVec;
 use cvm_tracing::CVM_ALLOWED;
 use guestmem::GuestMemory;
 use guestmem::GuestMemoryBackingError;
-use hcl::GuestVtl;
 use hcl::ioctl::Hcl;
 use hcl::ioctl::SetVsmPartitionConfigError;
 use hv1_emulator::hv::GlobalHv;
@@ -121,7 +120,6 @@ use virt::X86Partition;
 use virt::irqcon::IoApicRouting;
 use virt::irqcon::MsiRequest;
 use virt::x86::apic_software_device::ApicSoftwareDevices;
-use virt_support_apic::LocalApicSet;
 use vm_topology::memory::MemoryLayout;
 use vm_topology::processor::ProcessorTopology;
 use vm_topology::processor::TargetVpInfo;
@@ -2088,10 +2086,11 @@ impl UhPartition {
                     Some(new_perms),
                     &mut CcaBacked::tlb_flush_lock_access(
                         None,
-                        slef.inner.as_ref(),
+                        self.inner.as_ref(),
                         cca_backed_shared,
                     ),
-                ),
+                )
+                .map_err(|e| anyhow::anyhow!(e)),
             BackingShared::Hypervisor(_) => {
                 let _ = (vtl, gpn, new_perms);
                 unreachable!()
@@ -2129,6 +2128,19 @@ impl UhPartition {
                         self.inner.as_ref(),
                         tdx_backed_shared,
                     ),
+                )
+                .map_err(|e| anyhow::anyhow!(e)),
+            BackingShared::Cca(cca_backed_shared) => cca_backed_shared
+                .cvm
+                .isolated_memory_protector
+                .unregister_overlay_page(
+                    vtl,
+                    gpn,
+                    &mut CcaBacked::tlb_flush_lock_access(
+                        None,
+                        self.inner.as_ref(),
+                        cca_backed_shared,
+                    )
                 )
                 .map_err(|e| anyhow::anyhow!(e)),
             BackingShared::Hypervisor(_) => {
