@@ -444,6 +444,7 @@ impl UhCvmVpState {
             hv,
             #[cfg(guest_arch = "x86_64")]
             lapics,
+            #[cfg(guest_arch = "x86_64")]
             vtl1: None,
         })
     }
