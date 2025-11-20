@@ -79,6 +79,8 @@ use virt::VpIndex;
 use virt::io::CpuIo;
 use vm_topology::processor::TargetVpInfo;
 use vmcore::vmtime::VmTimeAccess;
+use hvdef::HvRegisterCrInterceptControl;
+use hv1_emulator::synic::ProcessorSynic;
 
 /// An object to run lower VTLs and to access processor state.
 ///
