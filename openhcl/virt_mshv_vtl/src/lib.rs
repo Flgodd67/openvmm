@@ -884,6 +884,7 @@ impl virt::Partition for UhPartition {
     }
 }
 
+#[cfg(guest_arch = "x86_64")]
 impl X86Partition for UhPartition {
     fn ioapic_routing(&self) -> Arc<dyn IoApicRouting> {
         self.inner.clone()
