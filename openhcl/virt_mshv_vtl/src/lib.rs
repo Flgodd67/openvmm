@@ -42,6 +42,8 @@ cfg_if::cfg_if!(
 mod processor;
 #[cfg(guest_arch = "aarch64")]
 use aarch64defs::Vendor;
+#[cfg(not(guest_arch = "x86_64"))]
+use hcl::GuestVtl;
 #[cfg(guest_arch = "aarch64")]
 use hcl::ioctl::cca::RsiRealmConfig;
 #[cfg(guest_arch = "x86_64")]
@@ -98,6 +100,8 @@ use parking_lot::RwLock;
 use processor::BackingSharedParams;
 use processor::SidecarExitReason;
 use sidecar_client::NewSidecarClientError;
+#[cfg(not(guest_arch = "x86_64"))]
+use virt_support_apic::LocalApicSet;
 use std::ops::RangeInclusive;
 use std::os::fd::AsRawFd;
 use std::sync::Arc;
@@ -395,6 +399,7 @@ struct UhCvmVpState {
     /// LAPIC state.
     #[cfg(guest_arch = "x86_64")]
     lapics: VtlArray<LapicState, 2>,
+    
     /// Guest VSM state for this vp. Some when VTL 1 is enabled.
     vtl1: Option<GuestVsmVpState>,
 }
@@ -911,6 +916,11 @@ impl UhPartitionInner {
     #[cfg(guest_arch = "x86_64")]
     fn lapic(&self, vtl: GuestVtl) -> Option<&LocalApicSet> {
         self.backing_shared.cvm_state().map(|x| &x.lapic[vtl])
+    }
+
+    #[cfg(not(guest_arch = "x86_64"))]
+    fn lapic(&self, _vtl: GuestVtl) -> Option<()> {
+        None
     }
 
     fn hv(&self) -> Option<&GlobalHv<2>> {
@@ -2067,6 +2077,21 @@ impl UhPartition {
                     ),
                 )
                 .map_err(|e| anyhow::anyhow!(e)),
+            BackingShared::Cca(cca_backed_shared) => cca_backed_shared
+                .cvm
+                .isolated_memory_protector
+                .register_overlay_page(
+                    vtl,
+                    gpn,
+                    GpnSource::Dma,
+                    HvMapGpaFlags::new(),
+                    Some(new_perms),
+                    &mut CcaBacked::tlb_flush_lock_access(
+                        None,
+                        slef.inner.as_ref(),
+                        cca_backed_shared,
+                    ),
+                ),
             BackingShared::Hypervisor(_) => {
                 let _ = (vtl, gpn, new_perms);
                 unreachable!()
@@ -2183,6 +2208,7 @@ impl UhProtoPartition<'_> {
         });
 
         Ok(UhCvmPartitionState {
+            #[cfg(guest_arch = "x86_64")]
             vps_per_socket: params.topology.reserved_vps_per_socket(),
             tlb_locked_vps,
             vps,

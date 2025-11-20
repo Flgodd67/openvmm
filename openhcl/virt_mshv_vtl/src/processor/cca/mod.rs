@@ -12,7 +12,7 @@ use super::HardwareIsolatedBacking;
 use super::vp_state;
 use crate::TlbFlushLockAccess;
 use crate::UhPartitionInner;
-use crate::processor::UhRunVpError;
+// use crate::processor::UhRunVpError;
 use crate::{BackingShared, UhCvmPartitionState, UhCvmVpState, UhPartitionNewParams};
 use aarch64defs::EsrEl2;
 use aarch64defs::SystemReg;
@@ -282,6 +282,15 @@ impl BackingPrivate for CcaBacked {
         Ok(())
     }
 
+    fn process_interrupts(
+            this: &mut UhProcessor<'_, Self>,
+            scan_irr: VtlArray<bool, 2>,
+            first_scan_irr: &mut bool,
+            dev: &impl CpuIo,
+        ) -> bool{
+            Ok(false)
+        }
+
     fn poll_apic(
         _this: &mut UhProcessor<'_, Self>,
         _vtl: GuestVtl,
@@ -300,13 +309,13 @@ impl BackingPrivate for CcaBacked {
         unimplemented!();
     }
 
-    fn handle_cross_vtl_interrupts(
-        _this: &mut UhProcessor<'_, Self>,
-        _dev: &impl CpuIo,
-    ) -> Result<bool, UhRunVpError> {
-        // TODO: CCA: handle cross VTL interrupts when GIC support is added
-        Ok(false)
-    }
+    // fn handle_cross_vtl_interrupts(
+    //     _this: &mut UhProcessor<'_, Self>,
+    //     _dev: &impl CpuIo,
+    // ) -> Result<bool, UhRunVpError> {
+    //     // TODO: CCA: handle cross VTL interrupts when GIC support is added
+    //     Ok(false)
+    // }
 
     fn hv(&self, _vtl: GuestVtl) -> Option<&ProcessorVtlHv> {
         None
@@ -316,13 +325,13 @@ impl BackingPrivate for CcaBacked {
         None
     }
 
-    fn untrusted_synic(&self) -> Option<&ProcessorSynic> {
-        None
-    }
+    // fn untrusted_synic(&self) -> Option<&ProcessorSynic> {
+    //     None
+    // }
 
-    fn untrusted_synic_mut(&mut self) -> Option<&mut ProcessorSynic> {
-        None
-    }
+    // fn untrusted_synic_mut(&mut self) -> Option<&mut ProcessorSynic> {
+    //     None
+    // }
 
     fn handle_vp_start_enable_vtl_wake(
         _this: &mut UhProcessor<'_, Self>,
@@ -515,15 +524,69 @@ impl HardwareIsolatedBacking for CcaBacked {
     }
 
     fn tlb_flush_lock_access<'a>(
-        vp_index: VpIndex,
+        vp_index: Option<VpIndex>,
         partition: &'a UhPartitionInner,
         shared: &'a Self::Shared,
     ) -> impl TlbFlushLockAccess + 'a {
+
+        let vp_index_t = vp_index.unwrap_or(default_vp_index());
+
         CcaTlbLockFlushAccess {
-            vp_index,
+            vp_index_t,
             partition,
             shared,
         }
+    }
+
+    fn pending_event_vector(this: &UhProcessor<'_, Self>, vtl: GuestVtl) -> Option<u8>{
+        let event_inject = this.runner.vmsa(vtl).event_inject();
+        if event_inject.valid() {
+            Some(event_inject.vector())
+        } else {
+            None
+        }
+    }
+
+    fn is_interrupt_pending(
+        this: &mut UhProcessor<'_, Self>,
+        vtl: GuestVtl,
+        check_rflags: bool,
+        dev: &impl CpuIo,
+    ) -> bool{
+        Ok(false)
+    }
+
+    fn set_pending_exception(
+        this: &mut UhProcessor<'_, Self>,
+        vtl: GuestVtl,
+        event: hvdef::HvX64PendingExceptionEvent,
+    ){
+
+    }
+
+    fn intercept_message_state(
+        this: &UhProcessor<'_, Self>,
+        vtl: GuestVtl,
+        include_optional_state: bool,
+    ) -> InterceptMessageState{
+
+    }
+
+    fn cr0(this: &UhProcessor<'_, Self>, vtl: GuestVtl) -> u64 {
+        this.runner.vmsa(vtl).cr0()
+    }
+
+    fn cr4(this: &UhProcessor<'_, Self>, vtl: GuestVtl) -> u64 {
+        this.runner.vmsa(vtl).cr4()
+    }
+
+    fn cr_intercept_registration(
+        this: &mut UhProcessor<'_, Self>,
+        intercept_control: HvRegisterCrInterceptControl,
+    ){}
+
+    fn untrusted_synic_mut(&mut self) -> Option<&mut ProcessorSynic>{
+        None
     }
 }
 
