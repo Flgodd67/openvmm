@@ -550,12 +550,13 @@ impl HardwareIsolatedBacking for CcaBacked {
     }
 
     fn pending_event_vector(this: &UhProcessor<'_, Self>, vtl: GuestVtl) -> Option<u8>{
-        let event_inject = this.runner.vmsa(vtl).event_inject();
-        if event_inject.valid() {
-            Some(event_inject.vector())
-        } else {
-            None
-        }
+        // let event_inject = this.runner.vmsa(vtl).event_inject();
+        // if event_inject.valid() {
+        //     Some(event_inject.vector())
+        // } else {
+        //     None
+        // }
+        None
     }
 
     fn is_interrupt_pending(
@@ -575,22 +576,7 @@ impl HardwareIsolatedBacking for CcaBacked {
 
     }
 
-    // #[cfg_attr(guest_arch = "aarch64", expect(dead_code))]
-    // pub(crate) struct InterceptMessageState {
-    //     instruction_length_and_cr8: u8,
-    //     cpl: u8,
-    //     efer_lma: bool,
-    //     cs: hvdef::HvX64SegmentRegister,
-    //     rip: u64,
-    //     rflags: u64,
-    //     rax: u64,
-    //     rdx: u64,
-    //     rcx: u64,
-    //     rsi: u64,
-    //     rdi: u64,
-    //     optional: Option<InterceptMessageOptionalState>,
-    // }
-
+    ///TODO Place holder. Not implemented for arm64.
     fn intercept_message_state(
         this: &UhProcessor<'_, Self>,
         vtl: GuestVtl,
@@ -613,11 +599,13 @@ impl HardwareIsolatedBacking for CcaBacked {
     }
 
     fn cr0(this: &UhProcessor<'_, Self>, vtl: GuestVtl) -> u64 {
-        this.runner.vmsa(vtl).cr0()
+        //this.runner.vmsa(vtl).cr0()
+        0
     }
 
     fn cr4(this: &UhProcessor<'_, Self>, vtl: GuestVtl) -> u64 {
-        this.runner.vmsa(vtl).cr4()
+        //this.runner.vmsa(vtl).cr4()
+        0
     }
 
     fn cr_intercept_registration(
