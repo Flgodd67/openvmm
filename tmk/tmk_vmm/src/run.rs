@@ -6,7 +6,6 @@
 use crate::Options;
 use crate::load;
 use anyhow::Context as _;
-use vm_topology::memory::MemoryRangeWithNode;
 use core::ops::Range;
 use core::slice;
 use futures::StreamExt as _;

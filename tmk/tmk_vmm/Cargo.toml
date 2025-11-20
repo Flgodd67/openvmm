@@ -55,5 +55,8 @@ virt_hvf.workspace = true
 [build-dependencies]
 build_rs_guest_arch.workspace = true
 
-[lints]
-workspace = true
+[lints.rust]
+unsafe_code = "allow"
+
+# [lints]
+# workspace = true
