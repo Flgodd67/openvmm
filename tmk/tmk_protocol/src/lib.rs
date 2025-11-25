@@ -11,6 +11,9 @@ use zerocopy::Immutable;
 use zerocopy::IntoBytes;
 use zerocopy::TryFromBytes;
 
+/// Address for issuing a command. Write a `&Command` to log.
+pub const COMMAND_ADDRESS: u64 = 0xffff0000;
+
 /// Start input from the VMM to the TMK.
 #[repr(C)]
 #[derive(Debug, IntoBytes, Immutable)]
