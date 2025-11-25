@@ -62,7 +62,7 @@ impl RunContext<'_> {
             processor_topology: &self.state.processor_topology,
             isolation,
             vtl0_alias_map_bit: None,
-            vtom: None,
+            vtom,
             mem_layout: &self.state.memory_layout,
             complete_memory_layout: &self.state.memory_layout,
             boot_init: None,
