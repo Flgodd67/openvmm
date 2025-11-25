@@ -36,6 +36,21 @@ impl RunContext<'_> {
         };
         let p = virt_mshv_vtl::UhProtoPartition::new(params, |_| self.state.driver.clone())?;
 
+        let vtom = if cfg!(guest_arch = "aarch64") {
+            Some(1 << (p.realm_config().ipa_width() - 1))
+        } else {
+            None
+        };
+
+        if cfg!(guest_arch = "aarch64") {
+            p.cca_set_mem_perm(
+                self.hugetlb_memory.as_ref().unwrap().pa,
+                self.hugetlb_memory.as_ref().unwrap().pa
+                    + self.hugetlb_memory.as_ref().unwrap().size,
+            )
+            .expect("failed to set CCA memory permissions");
+        }
+
         let m = underhill_mem::init(&underhill_mem::Init {
             processor_topology: &self.state.processor_topology,
             isolation,
@@ -48,6 +63,33 @@ impl RunContext<'_> {
             maximum_vtl: hvdef::Vtl::Vtl0,
         })
         .await?;
+
+        let dma_manager = OpenhclDmaManager::new(
+            &[],
+            &self
+                .memory_layout
+                .ram()
+                .iter()
+                .map(|r| r.range)
+                .collect::<Vec<_>>(),
+            vtom.unwrap_or(0),
+        )
+        .expect("failed to create global dma manager");
+        // Needed because if we use the same DMA manager for both below,
+        // the shared manager will end up allocating some pages at the start of the address space,
+        // which will conflict with the private allocations and erase some of the ELF sections
+        // of the TMK.
+        let shared_dma_manager = OpenhclDmaManager::new(
+            &[],
+            &self
+                .shared_memory_layout
+                .ram()
+                .iter()
+                .map(|r| r.range)
+                .collect::<Vec<_>>(),
+            vtom.unwrap_or(0),
+        )
+        .expect("failed to create global dma manager");
 
         let (partition, vps) = p
             .build(UhLateParams {
