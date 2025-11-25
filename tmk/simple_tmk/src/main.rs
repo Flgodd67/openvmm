@@ -8,6 +8,7 @@
 #![cfg_attr(target_arch = "x86_64", expect(unsafe_code))]
 
 mod prelude;
+mod tmk;
 
 mod common;
 mod x86_64;
