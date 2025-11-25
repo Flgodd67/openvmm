@@ -2160,7 +2160,7 @@ impl UhProtoPartition<'_> {
     /// Whether Guest VSM is available to the guest. If so, for hardware CVMs,
     /// it is safe to expose Guest VSM support via cpuid.
     fn check_guest_vsm_support(hcl: &Hcl) -> Result<bool, Error> {
-        if hcl.isolation() == IsolationType::Cca {
+        if hcl.isolation() == hcl::ioctl::IsolationType::Cca {
             // TODO: CCA: will need to let it go through the checks below in the future.
             return Ok(true);
         }
