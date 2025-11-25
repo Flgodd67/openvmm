@@ -115,23 +115,23 @@ impl RunContext<'_> {
                 cpuid: Vec::new(),
                 crash_notification_send: mesh::channel().0,
                 vmtime: self.vmtime_source,
-                cvm_params: None,
-                // cvm_params: Some(virt_mshv_vtl::CvmLateParams {
-                //     shared_gm: m.cvm_memory().unwrap().shared_gm.clone(),
-                //     isolated_memory_protector: m.cvm_memory().unwrap().protector.clone(),
-                //     shared_dma_client: shared_dma_manager.new_client(DmaClientParameters {
-                //         device_name: "partition-shared".into(),
-                //         lower_vtl_policy: LowerVtlPermissionPolicy::Any,
-                //         allocation_visibility: AllocationVisibility::Private,
-                //         persistent_allocations: true,
-                //     })?,
-                //     private_dma_client: dma_manager.new_client(DmaClientParameters {
-                //         device_name: "partition-private".into(),
-                //         lower_vtl_policy: LowerVtlPermissionPolicy::Any,
-                //         allocation_visibility: AllocationVisibility::Private,
-                //         persistent_allocations: true,
-                //     })?,
-                // }),
+                // cvm_params: None,
+                cvm_params: Some(virt_mshv_vtl::CvmLateParams {
+                    shared_gm: m.cvm_memory().unwrap().shared_gm.clone(),
+                    isolated_memory_protector: m.cvm_memory().unwrap().protector.clone(),
+                    shared_dma_client: shared_dma_manager.new_client(DmaClientParameters {
+                        device_name: "partition-shared".into(),
+                        lower_vtl_policy: LowerVtlPermissionPolicy::Any,
+                        allocation_visibility: AllocationVisibility::Private,
+                        persistent_allocations: true,
+                    })?,
+                    private_dma_client: dma_manager.new_client(DmaClientParameters {
+                        device_name: "partition-private".into(),
+                        lower_vtl_policy: LowerVtlPermissionPolicy::Any,
+                        allocation_visibility: AllocationVisibility::Private,
+                        persistent_allocations: true,
+                    })?,
+                }),
                 vmbus_relay: false,
             })
             .await?;
