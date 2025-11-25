@@ -126,7 +126,7 @@ async fn do_main(driver: DefaultDriver) -> anyhow::Result<()> {
                 #[cfg(target_os = "macos")]
                 HypervisorOpt::Hvf => state.run_host_vmm(virt_hvf::HvfHypervisor, test).await,
                 #[cfg(all(target_os = "linux", guest_arch = "aarch64"))]
-                HypervisorOpt::Cca => state.run_paravisor_vmm(virt::IsolationType::Cca).await,
+                HypervisorOpt::Cca => state.run_paravisor_vmm(virt::IsolationType::Cca, test).await,
             })
             .await
     }
