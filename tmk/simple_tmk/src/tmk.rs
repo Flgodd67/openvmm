@@ -47,26 +47,26 @@ fn main() -> ! {
     panic!("still running?");
 }
 
-#[cfg_attr(minimal_rt, panic_handler)]
-#[cfg_attr(not(minimal_rt), expect(dead_code))]
-fn panic(info: &core::panic::PanicInfo<'_>) -> ! {
-    use core::fmt::Write;
-    let mut msg = arrayvec::ArrayString::<1024>::new();
-    let _ = write!(&mut msg, "{}", info.message());
-    let (filename, line) = info.location().map_or(("", 0), |l| (l.file(), l.line()));
-    // SAFETY: the command is valid.
-    unsafe {
-        command(&tmk_protocol::Command::Panic {
-            message: tmk_protocol::StrDescriptor {
-                gpa: msg.as_ptr() as u64,
-                len: msg.len() as u64,
-            },
-            filename: tmk_protocol::StrDescriptor {
-                gpa: filename.as_ptr() as u64,
-                len: filename.len() as u64,
-            },
-            line,
-        });
-    }
-    minimal_rt::arch::fault();
-}
+// #[cfg_attr(minimal_rt, panic_handler)]
+// #[cfg_attr(not(minimal_rt), expect(dead_code))]
+// fn panic(info: &core::panic::PanicInfo<'_>) -> ! {
+//     use core::fmt::Write;
+//     let mut msg = arrayvec::ArrayString::<1024>::new();
+//     let _ = write!(&mut msg, "{}", info.message());
+//     let (filename, line) = info.location().map_or(("", 0), |l| (l.file(), l.line()));
+//     // SAFETY: the command is valid.
+//     unsafe {
+//         command(&tmk_protocol::Command::Panic {
+//             message: tmk_protocol::StrDescriptor {
+//                 gpa: msg.as_ptr() as u64,
+//                 len: msg.len() as u64,
+//             },
+//             filename: tmk_protocol::StrDescriptor {
+//                 gpa: filename.as_ptr() as u64,
+//                 len: filename.len() as u64,
+//             },
+//             line,
+//         });
+//     }
+//     minimal_rt::arch::fault();
+// }
