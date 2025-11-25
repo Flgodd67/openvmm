@@ -2160,10 +2160,10 @@ impl UhProtoPartition<'_> {
     /// Whether Guest VSM is available to the guest. If so, for hardware CVMs,
     /// it is safe to expose Guest VSM support via cpuid.
     fn check_guest_vsm_support(hcl: &Hcl) -> Result<bool, Error> {
-        if hcl.isolation() == hcl::ioctl::IsolationType::Cca {
-            // TODO: CCA: will need to let it go through the checks below in the future.
-            return Ok(true);
-        }
+        // if hcl.isolation() == hcl::ioctl::IsolationType::Cca {
+        //     // TODO: CCA: will need to let it go through the checks below in the future.
+        //     return Ok(true);
+        // }
         #[cfg(guest_arch = "x86_64")]
         let privs = {
             let result = safe_intrinsics::cpuid(hvdef::HV_CPUID_FUNCTION_MS_HV_FEATURES, 0);
