@@ -87,6 +87,9 @@ enum HypervisorOpt {
     /// Use Hypervisor.Framework to run the TMK.
     #[cfg(target_os = "macos")]
     Hvf,
+    /// Use mshv-vtl to run the TMK inside a CCA realm.
+    #[cfg(all(target_os = "linux", guest_arch = "aarch64"))]
+    Cca,
 }
 
 async fn do_main(driver: DefaultDriver) -> anyhow::Result<()> {
@@ -122,6 +125,8 @@ async fn do_main(driver: DefaultDriver) -> anyhow::Result<()> {
                 HypervisorOpt::Whp => state.run_host_vmm(virt_whp::Whp, test).await,
                 #[cfg(target_os = "macos")]
                 HypervisorOpt::Hvf => state.run_host_vmm(virt_hvf::HvfHypervisor, test).await,
+                #[cfg(all(target_os = "linux", guest_arch = "aarch64"))]
+                HypervisorOpt::Cca => state.run_paravisor_vmm(virt::IsolationType::Cca).await,
             })
             .await
     }
@@ -152,6 +157,11 @@ fn choose_hypervisor() -> anyhow::Result<HypervisorOpt> {
             return Ok(HypervisorOpt::Hvf);
         }
     }
+    // #[cfg(all(target_os = "linux", guest_arch = "aarch64"))]
+    // {
+    //     if virt::Hypervisor::is_available(&virt_c)
+    // }
+
 
     anyhow::bail!("no hypervisor available");
 }
