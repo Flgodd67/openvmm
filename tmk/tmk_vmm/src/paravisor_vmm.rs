@@ -51,9 +51,9 @@ impl RunContext<'_> {
 
         if cfg!(guest_arch = "aarch64") {
             p.cca_set_mem_perm(
-                self.hugetlb_memory.as_ref().unwrap().pa,
-                self.hugetlb_memory.as_ref().unwrap().pa
-                    + self.hugetlb_memory.as_ref().unwrap().size,
+                self.state.hugetlb_memory.as_ref().unwrap().pa,
+                self.state.hugetlb_memory.as_ref().unwrap().pa
+                    + self.state.hugetlb_memory.as_ref().unwrap().size,
             )
             .expect("failed to set CCA memory permissions");
         }
@@ -74,6 +74,7 @@ impl RunContext<'_> {
         let dma_manager = OpenhclDmaManager::new(
             &[],
             &self
+                .state
                 .memory_layout
                 .ram()
                 .iter()
@@ -90,6 +91,7 @@ impl RunContext<'_> {
         let shared_dma_manager = OpenhclDmaManager::new(
             &[],
             &self
+                .state
                 .shared_memory_layout
                 .ram()
                 .iter()
