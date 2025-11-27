@@ -685,6 +685,7 @@ impl<'p, T: Backing> Processor for UhProcessor<'p, T> {
             let mut db: [u64; 4] = [0; 4];
             let mut access_state = self.access_state(vtl);
             let mut registers = access_state.registers()?;
+            println!("Made it here");
             let mut rflags = x86defs::RFlags::from(registers.rflags);
             let mut dr7: u64 = 0;
 
