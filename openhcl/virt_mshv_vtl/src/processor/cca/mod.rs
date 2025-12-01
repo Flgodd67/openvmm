@@ -403,7 +403,46 @@ impl AccessVpState for UhVpStateAccess<'_, '_, CcaBacked> {
     }
 
     fn registers(&mut self) -> Result<vp::Registers, Self::Error> {
-        todo!()
+        
+        let reg: vp::Registers;
+
+        let plane_enter = self.vp.runner.cca_rsi_plane_entry();
+
+        reg.x0 = plane_enter.gprs[0];
+        reg.x1 = plane_enter.gprs[1];
+        reg.x2 = plane_enter.gprs[2];
+        reg.x3 = plane_enter.gprs[3];
+        reg.x4 = plane_enter.gprs[4];
+        reg.x5 = plane_enter.gprs[5];
+        reg.x6 = plane_enter.gprs[6];
+        reg.x7 = plane_enter.gprs[7];
+        reg.x8 = plane_enter.gprs[8];
+        reg.x9 = plane_enter.gprs[9];
+        reg.x10 = plane_enter.gprs[10];
+        reg.x11 = plane_enter.gprs[11];
+        reg.x12 = plane_enter.gprs[12];
+        reg.x13 = plane_enter.gprs[13];
+        reg.x14 = plane_enter.gprs[14];
+        reg.x15 = plane_enter.gprs[15];
+        reg.x16 = plane_enter.gprs[16];
+        reg.x17 = plane_enter.gprs[17];
+        reg.x18 = plane_enter.gprs[18];
+        reg.x19 = plane_enter.gprs[19];
+        reg.x20 = plane_enter.gprs[20];
+        reg.x21 = plane_enter.gprs[21];
+        reg.x22 = plane_enter.gprs[22];
+        reg.x23 = plane_enter.gprs[23];
+        reg.x24 = plane_enter.gprs[24];
+        reg.x25 = plane_enter.gprs[25];
+        reg.x26 = plane_enter.gprs[26];
+        reg.x27 = plane_enter.gprs[27];
+        reg.x28 = plane_enter.gprs[28];
+        reg.fp = plane_enter.gprs[29];
+        reg.lr = plane_enter.gprs[30];
+        reg.pc = plane_enter.pc;
+
+
+        Ok(reg)
     }
 
     fn set_registers(&mut self, value: &vp::Registers) -> Result<(), Self::Error> {

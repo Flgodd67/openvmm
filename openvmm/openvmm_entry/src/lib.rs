@@ -1816,6 +1816,8 @@ fn do_main() -> anyhow::Result<()> {
             Ok(())
         })
     } else {
+
+        println!("in else before run_control");
         DefaultPool::run_with(async |driver| {
             let mesh = VmmMesh::new(&driver, opt.single_process)?;
             let result = run_control(&driver, &mesh, opt).await;

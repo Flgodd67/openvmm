@@ -8,4 +8,5 @@ use crate::prelude::*;
 #[tmk_test]
 fn boot(_: TestContext<'_>) {
     log!("hello world");
+    log!("bens changes");
 }

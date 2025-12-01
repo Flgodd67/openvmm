@@ -512,6 +512,7 @@ impl<P: Processor> Runner<'_, P> {
                 },
             )
             .await;
+        println!("AFTER RUNVP BEFORE registers()");
         let regs = self
             .vp
             .access_state(Vtl::Vtl0)
