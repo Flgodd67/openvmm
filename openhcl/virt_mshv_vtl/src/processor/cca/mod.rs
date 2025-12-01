@@ -404,7 +404,7 @@ impl AccessVpState for UhVpStateAccess<'_, '_, CcaBacked> {
 
     fn registers(&mut self) -> Result<vp::Registers, Self::Error> {
         
-        let reg: vp::Registers = vp::Registers::default();
+        let mut reg: vp::Registers = vp::Registers::default();
 
         let plane_enter = self.vp.runner.cca_rsi_plane_entry();
 
