@@ -28,6 +28,7 @@ cfg_if::cfg_if! {
         use virt::vp::AccessVpState;
         use zerocopy::IntoBytes;
     } else if #[cfg(guest_arch = "aarch64")] {
+        pub mod cca;
         use hv1_hypercall::Arm64RegisterState;
         use hvdef::HvArm64RegisterName;
     } else {
