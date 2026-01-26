@@ -100,7 +100,7 @@ impl IsolationType {
             hvdef::HvPartitionIsolationType::VBS => Ok(IsolationType::Vbs),
             hvdef::HvPartitionIsolationType::SNP => Ok(IsolationType::Snp),
             hvdef::HvPartitionIsolationType::TDX => Ok(IsolationType::Tdx),
-            hvdef::HvPartitionIsolationType::CCA => OK(IsolationType::Cca),
+            hvdef::HvPartitionIsolationType::CCA => Ok(IsolationType::Cca),
             _ => Err(UnexpectedIsolationType),
         }
     }

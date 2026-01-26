@@ -59,6 +59,63 @@ impl Cca {
     }
 }
 
+/// Locate the physical address corresponding to a given virtual address.
+///
+/// This is a temporary solution to the deeper issue of "how does `plane_run`
+/// get passed from EL0 to EL1 to EL2?". We currently allocate it at EL0 in
+/// a fixed location, then find its address to pass to EL1. This is done because
+/// the size of `plane_run` is more than we can fit in the page allocated for
+/// `mshv_vtl_run` by the kernel driver, as is done for `tdx_vp_context`.
+pub fn virt_to_phys(vaddr: u64) -> Result<u64, String> {
+    // Constants based on the kernel's pagemap documentation.
+    const PFN_BITS: u64 = 55;
+    const PFN_MASK: u64 = (1 << PFN_BITS) - 1;
+    const PAGE_PRESENT_BIT: u64 = 1 << 63;
+    const PAGEMAP_ENTRY_SIZE: u64 = size_of::<u64>() as u64;
+
+    // Get the system's page size. This is more reliable than using a hardcoded value.
+    let page_size = nix::unistd::sysconf(nix::unistd::SysconfVar::PAGE_SIZE)
+        .unwrap()
+        .unwrap() as u64;
+    if page_size == 0 {
+        return Err("Could not determine system page size".to_string());
+    }
+    // dbg!(page_size);
+
+    // Open the pagemap file for the current process.
+    let pagemap_file = std::fs::File::open("/proc/self/pagemap").map_err(|e| {
+        format!("Failed to open /proc/self/pagemap (requires root or CAP_SYS_ADMIN): {e}")
+    })?;
+
+    // Each entry in pagemap is 8 bytes. Calculate the offset for the desired page.
+    // Virtual Page Number = Virtual Address / Page Size
+    // Offset = Virtual Page Number * Entry Size
+    let offset = (vaddr / page_size) * PAGEMAP_ENTRY_SIZE;
+    // dbg!(offset);
+
+    let mut entry_bytes = [0u8; 8];
+    // Use `read_exact_at` to perform an atomic seek-and-read. This is safer than
+    // separate lseek() and read() calls, especially in multithreaded programs.
+    pagemap_file
+        .read_exact_at(&mut entry_bytes, offset)
+        .map_err(|e| format!("Failed to read from /proc/self/pagemap at offset {offset}: {e}"))?;
+    // dbg!(entry_bytes);
+
+    let pagemap_entry = u64::from_ne_bytes(entry_bytes);
+
+    // According to the kernel documentation, bit 63 indicates if the page is present in RAM.
+    // If it's not present, the PFN bits are invalid (they may contain swap info).
+    if (pagemap_entry & PAGE_PRESENT_BIT) == 0 {
+        return Err(format!(
+            "Page for virtual address {vaddr:#x} is not present in RAM (swapped out or not mapped)"
+        ));
+    }
+
+    // The lower 55 bits contain the PFN.
+    let pfn = pagemap_entry & PFN_MASK;
+    Ok(pfn * page_size)
+}
+
 impl ProcessorRunner<'_, Cca> {
     /// Returns a reference to the current VTL's CPU context.
     pub fn cpu_context(&self) -> &u64 {
@@ -188,7 +245,7 @@ impl ProcessorRunner<'_, Cca> {
 impl<'a> super::BackingPrivate<'a> for Cca {
     fn new(vp: &HclVp, sidecar: Option<&SidecarVp<'_>>, _hcl: &Hcl) -> Result<Self, NoRunner> {
         assert!(sidecar.is_none());
-        let super::BackingState::Cca = &vp.backing else {
+        let super::BackingState::Cca {} = &vp.backing else {
             unreachable!()
         };
         let cca = Cca::new();
