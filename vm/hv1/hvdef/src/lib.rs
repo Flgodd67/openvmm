@@ -112,6 +112,7 @@ open_enum! {
         VBS = 1,
         SNP = 2,
         TDX = 3,
+        CCA = 4,
     }
 }
 

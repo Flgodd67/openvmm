@@ -351,6 +351,9 @@ impl Hcl {
                 .with_intercept_page_available(caps.intercept_page_available())
                 .with_dr6_shared(true)
                 .with_proxy_interrupt_redirect_available(caps.proxy_interrupt_redirect_available()),
+                // TODO: CCA: figure out what capabilities to enable here?
+            // TMK seems to work without any.
+            IsolationType::Cca => hvdef::HvRegisterVsmCapabilities::new(),
         };
 
         assert_eq!(caps.dr6_shared(), self.dr6_shared());

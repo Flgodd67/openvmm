@@ -82,6 +82,8 @@ use zerocopy::Immutable;
 use zerocopy::IntoBytes;
 use zerocopy::KnownLayout;
 
+use crate::ioctl::cca::RsiRealmConfig;
+
 // TODO: Chunk this up into smaller per-interface errors.
 /// Error returned by HCL operations.
 #[derive(Error, Debug)]
@@ -1524,7 +1526,7 @@ impl HclVp {
                     .allocate_dma_buffer(HV_PAGE_SIZE as usize)
                     .map_err(Error::AllocVp)?,
             },
-            IsolationType::Cca => BackingState::Cca,
+            IsolationType::Cca => BackingState::Cca {},
         };
 
         Ok(Self {

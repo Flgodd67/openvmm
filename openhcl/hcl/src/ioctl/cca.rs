@@ -59,6 +59,130 @@ impl Cca {
     }
 }
 
+impl ProcessorRunner<'_, Cca> {
+    /// Returns a reference to the current VTL's CPU context.
+    pub fn cpu_context(&self) -> &u64 {
+        // SAFETY: the cpu context will not be concurrently accessed by the
+        // hypervisor while this VP is in VTL2.
+        unsafe { &*(&raw mut (*self.run.get()).context).cast() }
+    }
+
+    /// Returns a mutable reference to the current VTL's CPU context.
+    pub fn cpu_context_mut(&mut self) -> &mut u64 {
+        // SAFETY: the cpu context will not be concurrently accessed by the
+        // hypervisor while this VP is in VTL2.
+        unsafe { &mut *(&raw mut (*self.run.get()).context).cast() }
+    }
+
+    /// Returns a mutable reference to the current VTL's CCA RSI plane run structure.
+    pub fn cca_rsi_plane_run_mut(&mut self) -> &mut cca_rsi_plane_run {
+        // SAFETY: The plane_run page is valid and mapped for the lifetime of the struct.
+        self.state.plane_run.as_mut().get_mut()
+    }
+
+    /// Returns a mutable reference to the current VTL's plane entry structure.
+    pub fn cca_rsi_plane_entry(&mut self) -> &mut cca_rsi_plane_entry {
+        &mut self.state.plane_run.as_mut().get_mut().entry
+    }
+
+    /// Returns a mutable reference to the current VTL's plane exit structure.
+    pub fn cca_rsi_plane_exit(&self) -> &cca_rsi_plane_exit {
+        // SAFETY: The plane_run page is valid and mapped for the lifetime of the struct.
+        &(unsafe { &*self.state.plane_run.as_ref().get() }).exit
+    }
+
+    /// Set the value of the plane entry flags.
+    pub fn cca_set_entry_flags(&mut self, value: u64) {
+        self.cca_rsi_plane_entry().flags = value;
+    }
+
+    /// Set the value of the plane entry PC.
+    pub fn cca_set_entry_pc(&mut self, value: u64) {
+        self.cca_rsi_plane_entry().pc = value;
+    }
+
+    /// Set the value of the plane entry GPRs.
+    pub fn cca_set_entry_gprs(&mut self, values: [u64; RSI_PLANE_NR_GPRS]) {
+        self.cca_rsi_plane_entry().gprs = values;
+    }
+
+    /// Set the value of the plane entry gicv3_hcr register.
+    pub fn cca_set_entry_gicv3_hcr(&mut self, value: u64) {
+        self.cca_rsi_plane_entry().gicv3_hcr = value;
+    }
+
+    /// Set the value of the plane entry GIC v3 LRs.
+    pub fn cca_set_entry_gicv3_lrs(&mut self, values: [u64; RSI_PLANE_GIC_NUM_LRS]) {
+        self.cca_rsi_plane_entry().gicv3_lrs = values;
+    }
+
+    /// Set the value of a single plane entry GPR.
+    fn cca_set_entry_gpr(&mut self, register: usize, value: u64) {
+        assert!(register < RSI_PLANE_NR_GPRS);
+        self.cca_rsi_plane_entry().gprs[register] = value;
+    }
+
+    /// Get the value of a single plane entry GPR.
+    fn cca_get_entry_gpr(&self, register: usize) -> u64 {
+        assert!(register < RSI_PLANE_NR_GPRS);
+        self.cca_rsi_plane_exit().gprs[register]
+    }
+
+    /// Flush the given value for a system register to the RMM.
+    pub fn cca_sysreg_write(
+        &mut self,
+        vtl: GuestVtl,
+        name: SystemReg,
+        value: u64,
+    ) -> Result<(), Error> {
+        self.hcl
+            .rsi_sysreg_write(vtl, u32::from(name.0) as u64, value)
+            .map_err(Error::SetRegisters)
+    }
+
+    /// Update the address of the `plane_run` structure in `mshv_vtl_run.context`.
+    pub fn cca_set_plane_enter(&mut self) {
+        // SAFETY: The plane_run page is valid and mapped for the lifetime of the struct.
+        let plane_run: &mut u64 = unsafe { &mut *(&raw mut (*self.run.get()).context).cast() };
+        let plane_run_phys = virt_to_phys(self.state.plane_run.as_ptr() as u64)
+            .expect("Failed to get plane_run physical address");
+        *plane_run = plane_run_phys;
+    }
+
+    /// Set flag to enable trapping of SIMD operations in the lower VTL.
+    pub fn cca_plane_trap_simd(&mut self) {
+        let plane_run: &mut cca_rsi_plane_run = self.state.plane_run.as_mut().get_mut();
+        plane_run.entry.flags |= RSI_PLANE_ENTER_FLAGS_TRAP_SIMD;
+    }
+
+    /// Unset flag that enables trapping of SIMD operations in lower VTL
+    /// (i.e., SIMD operations are not trapped).
+    pub fn cca_plane_no_trap_simd(&mut self) {
+        // SAFETY: The plane_run page is valid and mapped for the lifetime of the struct.
+        let plane_run: &mut cca_rsi_plane_run = self.state.plane_run.as_mut().get_mut();
+        plane_run.entry.flags &= !RSI_PLANE_ENTER_FLAGS_TRAP_SIMD;
+    }
+
+    /// Set the default value for PSTATE for the lower VTL.
+    pub fn cca_set_default_pstate(&mut self) {
+        // SPSR_EL2_MODE_EL1h | SPSR_EL2_nRW_AARCH64 | SPSR_EL2_F_BIT | SPSR_EL2_I_BIT | SPSR_EL2_A_BIT | SPSR_EL2_D_BIT
+        self.cca_rsi_plane_entry().pstate = 0x3c5;
+    }
+
+    // pub fn read_translation_registers(&self) -> TranslationRegisters {
+    //     let cpsr = rsi_plane_sysreg_read()
+    //     TranslationRegisters {
+    //         cpsr: cpsr.into(),
+    //         sctlr: sctlr.into(),
+    //         tcr: tcr.into(),
+    //         ttbr0,
+    //         ttbr1,
+    //         syndrome,
+    //         encryption_mode: virt_support_aarch64emu::translate::EncryptionMode::None,
+    //     }
+    // }
+}
+
 // CCA: NOTE this implementation is lifted from the aarch64 VBS implementation
 // and might need more work to make it CCA-aligned.
 impl<'a> super::BackingPrivate<'a> for Cca {
@@ -77,7 +201,7 @@ impl<'a> super::BackingPrivate<'a> for Cca {
         _vtl: GuestVtl,
         name: HvRegisterName,
         value: HvRegisterValue,
-    ) -> Result<bool, Error> {
+    ) -> bool {
         // Try to set the register in the CPU context, the fastest path. Only
         // VTL-shared registers can be set this way: the CPU context only
         // exposes the last VTL, and if we entered VTL2 on an interrupt,
@@ -125,7 +249,7 @@ impl<'a> super::BackingPrivate<'a> for Cca {
             _ => false,
         };
 
-        Ok(set)
+        set
     }
 
     fn must_flush_regs_on(_runner: &ProcessorRunner<'a, Self>, _name: HvRegisterName) -> bool {
@@ -136,7 +260,7 @@ impl<'a> super::BackingPrivate<'a> for Cca {
         runner: &ProcessorRunner<'a, Self>,
         _vtl: GuestVtl,
         name: HvRegisterName,
-    ) -> Result<Option<HvRegisterValue>, Error> {
+    ) -> Option<HvRegisterValue> {
         // Try to get the register from the CPU context, the fastest path.
         // NOTE: for VBS x18 is omitted here as it is managed by the hypervisor,
         //       do we need to do the same here?
@@ -178,7 +302,7 @@ impl<'a> super::BackingPrivate<'a> for Cca {
             ),
             _ => None,
         };
-        Ok(value)
+        value
     }
 
     fn flush_register_page(_runner: &mut ProcessorRunner<'a, Self>) {}
