@@ -130,6 +130,11 @@ pub enum Error {
     AllocVp(#[source] anyhow::Error),
     #[error("failed to map or unmap redirected device interrupt")]
     MapRedirectedDeviceInterrupt(#[source] nix::Error),
+    // added for CCA for now. could separate into own enum
+    #[error("failed to set registers using set_vp_registers hypercall")]
+    SetRegisters(#[source] HvError),
+    #[error("Invalid register value")]
+    InvalidRegisterValue,
 }
 
 /// Error for IOCTL errors specifically.
