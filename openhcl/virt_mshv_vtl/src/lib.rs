@@ -33,13 +33,19 @@ cfg_if::cfg_if!(
         type IrrBitmap = BitArray<[u32; 8], Lsb0>;
     } else if #[cfg(guest_arch = "aarch64")] {
         pub use crate::processor::mshv::arm64::HypervisorBackedArm64 as HypervisorBacked;
+        pub use processor::cca::CcaBacked;
+        use processor::cca::CcaBackedShared;
         use crate::processor::mshv::arm64::HypervisorBackedArm64Shared as HypervisorBackedShared;
+        use hvdef::HvArm64RegisterName;
     }
 );
 
 mod processor;
 pub use processor::Backing;
 pub use processor::UhProcessor;
+
+#[cfg(guest_arch = "aarch64")]
+use hcl::ioctl::cca::RsiRealmConfig;
 
 use anyhow::Context as AnyhowContext;
 use bitfield_struct::bitfield;
@@ -252,6 +258,8 @@ enum BackingShared {
     Snp(#[inspect(flatten)] SnpBackedShared),
     #[cfg(guest_arch = "x86_64")]
     Tdx(#[inspect(flatten)] TdxBackedShared),
+    #[cfg(guest_arch = "aarch64")]
+    Cca(#[inspect(flatten)] CcaBackedShared),
 }
 
 impl BackingShared {
@@ -278,6 +286,11 @@ impl BackingShared {
                 partition_params,
                 backing_shared_params,
             )?),
+            #[cfg(guest_arch = "aarch64")]
+            IsolationType::Cca => BackingShared::Cca(CcaBackedShared::new(
+                partition_params,
+                backing_shared_params,
+            )?),
             #[cfg(not(guest_arch = "x86_64"))]
             _ => unreachable!(),
         })
@@ -289,6 +302,7 @@ impl BackingShared {
             #[cfg(guest_arch = "x86_64")]
             BackingShared::Snp(SnpBackedShared { cvm, .. })
             | BackingShared::Tdx(TdxBackedShared { cvm, .. }) => Some(cvm),
+            BackingShared::Cca(CcaBackedShared { cvm, .. }) => Some(cvm),
         }
     }
 
@@ -299,6 +313,9 @@ impl BackingShared {
             BackingShared::Snp(_) => None,
             #[cfg(guest_arch = "x86_64")]
             BackingShared::Tdx(s) => s.untrusted_synic.as_ref(),
+            // TODO: CCA: do we need
+            #[cfg(guest_arch = "aarch64")]
+            BackingShared::Cca(_) => None,
         }
     }
 }
@@ -826,6 +843,10 @@ impl UhPartition {
             | BackingShared::Tdx(TdxBackedShared { cvm, .. }) => {
                 revoke(&mut *cvm.guest_vsm.write())?;
             }
+            BackingShared::Cca(CcaBackedShared { cvm, .. }) => {
+                revoke(&mut *cvm.guest_vsm.write())?;
+            }
+            
         };
 
         Ok(())
@@ -1558,6 +1579,8 @@ pub struct UhProtoPartition<'a> {
     create_partition_available: bool,
     #[cfg(guest_arch = "x86_64")]
     cpuid: virt::CpuidLeafSet,
+    #[cfg(guest_arch = "aarch64")]
+    realm_config: RsiRealmConfig,
 }
 
 impl<'a> UhProtoPartition<'a> {
@@ -1574,12 +1597,16 @@ impl<'a> UhProtoPartition<'a> {
             IsolationType::Vbs => hcl::ioctl::IsolationType::Vbs,
             IsolationType::Snp => hcl::ioctl::IsolationType::Snp,
             IsolationType::Tdx => hcl::ioctl::IsolationType::Tdx,
+            IsolationType::Cca => hcl::ioctl::IsolationType::Cca,
         };
 
         // Try to open the sidecar device, if it is present.
         let sidecar = sidecar_client::SidecarClient::new(driver).map_err(Error::Sidecar)?;
 
         let hcl = Hcl::new(hcl_isolation, sidecar).map_err(Error::Hcl)?;
+
+        #[cfg(guest_arch = "aarch64")]
+        let realm_config = hcl.get_realm_config().map_err(Error::Hcl)?;
 
         // Set the hypercalls that this process will use.
         let mut allowed_hypercalls = vec![
@@ -1649,6 +1676,8 @@ impl<'a> UhProtoPartition<'a> {
             create_partition_available: privs.create_partitions(),
             #[cfg(guest_arch = "x86_64")]
             cpuid,
+            #[cfg(guest_arch = "aarch64")]
+            realm_config,
         })
     }
 
@@ -1675,6 +1704,8 @@ impl<'a> UhProtoPartition<'a> {
             create_partition_available: _,
             #[cfg(guest_arch = "x86_64")]
             cpuid,
+            #[cfg(guest_arch = "aarch64")]
+            realm_config,
         } = self;
         let isolation = params.isolation;
         let is_hardware_isolated = isolation.is_hardware_isolated();
@@ -1933,6 +1964,18 @@ impl<'a> UhProtoPartition<'a> {
             vps,
         ))
     }
+
+    #[cfg(guest_arch = "aarch64")]
+    pub fn realm_config(&self) -> RsiRealmConfig {
+        self.realm_config
+    }
+
+    #[cfg(guest_arch = "aarch64")]
+    pub fn cca_set_mem_perm(&self, base_addr: u64, top_addr: u64) -> Result<(), Error> {
+        self.hcl
+            .rsi_set_mem_perm(GuestVtl::Vtl0, base_addr, top_addr)
+            .map_err(Error::VtlMem)
+    }
 }
 
 impl UhPartition {
@@ -2040,6 +2083,9 @@ impl UhPartition {
                     ),
                 )
                 .map_err(|e| anyhow::anyhow!(e)),
+            // TODO
+            #[cdf(guest_arch = "aarch64")]
+            BackingShared::Cca(cca_backed_shared) => None,
             BackingShared::Hypervisor(_) => {
                 let _ = (vtl, gpn, new_perms);
                 unreachable!()
@@ -2083,6 +2129,9 @@ impl UhPartition {
                 let _ = (vtl, gpn);
                 unreachable!()
             }
+            // TODO
+            #[cdf(guest_arch = "aarch64")]
+            BackingShared::Cca(cca_backed_shared) => None
         }
     }
 }

@@ -39,6 +39,14 @@ impl RunContext<'_> {
         };
         let p = virt_mshv_vtl::UhProtoPartition::new(params, |_| self.state.driver.clone())?;
 
+        let vtom = if cfg!(guest_arch = "aarch64") {
+            Some(1 << (p.realm_config().ipa_width() - 1))
+        } else {
+            None
+        };
+
+        /// TODO ionut sets p.cca_set_mem_perm() here with hugetlbfs. Should I just allocate some memory?
+
         let m = underhill_mem::init(&underhill_mem::Init {
             processor_topology: &self.state.processor_topology,
             isolation,
@@ -101,7 +109,8 @@ async fn start_vp(
         let driver = pool.client().initiator().clone();
         pool.client().set_idle_task(async move |mut control| {
             let vp = vp
-                .bind_processor::<virt_mshv_vtl::HypervisorBacked>(&driver, Some(&mut control))
+            /// TODO:  Was virt_mshv_vtl::HypervisorBacked - make so the the virt_mshv_vtl::T can be chosen here not hardcoded
+                .bind_processor::<virt_mshv_vtl::CcaBacked>(&driver, Some(&mut control))
                 .unwrap();
 
             runner.build(vp).unwrap().run_vp().await;
