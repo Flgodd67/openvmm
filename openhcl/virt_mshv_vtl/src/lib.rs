@@ -14,7 +14,6 @@ cfg_if::cfg_if!(
         mod cvm_cpuid;
         pub use processor::snp::SnpBacked;
         pub use processor::tdx::TdxBacked;
-        use crate::processor::HardwareIsolatedBacking;
         pub use crate::processor::mshv::x64::HypervisorBackedX86 as HypervisorBacked;
         use crate::processor::mshv::x64::HypervisorBackedX86Shared as HypervisorBackedShared;
         use bitvec::prelude::BitArray;
@@ -48,6 +47,8 @@ use aarch64defs::Vendor;
 
 #[cfg(guest_arch = "aarch64")]
 use hcl::ioctl::cca::RsiRealmConfig;
+
+use crate::processor::HardwareIsolatedBacking;
 
 use anyhow::Context as AnyhowContext;
 use bitfield_struct::bitfield;
