@@ -70,6 +70,27 @@ pub struct EsrEl2 {
     _rsvd: u32,
 }
 
+impl EsrEl2 {
+    pub fn is_write(&self) -> bool {
+        // The WNR bit is set for writes, not reads.
+        (self.0 & (1 << 6)) != 0
+    }
+
+    pub fn is_read(&self) -> bool {
+        // The WNR bit is set for writes, not reads.
+        (self.0 & (1 << 6)) == 0
+    }
+
+    pub fn srt(&self) -> u8 {
+        // The SRT field is only valid for data aborts.
+        if (ExceptionClass::DATA_ABORT_LOWER.0..ExceptionClass::DATA_ABORT.0).contains(&self.ec()) {
+            ((self.iss() & (0x1f << 16)) >> 16) as u8
+        } else {
+            0
+        }
+    }
+}
+
 /// aarch64 SCTRL_EL1
 #[bitfield(u64)]
 #[derive(PartialEq, Eq)]
