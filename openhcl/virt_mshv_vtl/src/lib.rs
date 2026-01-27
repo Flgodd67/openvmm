@@ -44,6 +44,9 @@ pub use processor::Backing;
 pub use processor::UhProcessor;
 
 #[cfg(guest_arch = "aarch64")]
+use aarch64defs::Vendor;
+
+#[cfg(guest_arch = "aarch64")]
 use hcl::ioctl::cca::RsiRealmConfig;
 
 use anyhow::Context as AnyhowContext;
@@ -891,6 +894,7 @@ impl virt::Partition for UhPartition {
     }
 }
 
+#[cfg(guest_arch = "x86_64")]
 impl X86Partition for UhPartition {
     fn ioapic_routing(&self) -> Arc<dyn IoApicRouting> {
         self.inner.clone()
@@ -2335,7 +2339,8 @@ fn get_tsc_frequency(isolation: IsolationType) -> Result<u64, Error> {
 
     // Get the hardware-advertised frequency and validate that the
     // hypervisor frequency is not too far off.
-    let hw_info = match isolation {
+    let hw_info: Option<(u64, u64)> = match isolation {
+        #[cfg(guest_arch = "x86_64")]
         IsolationType::Tdx => {
             // TDX provides the TSC frequency via cpuid.
             let max_function =
@@ -2363,15 +2368,18 @@ fn get_tsc_frequency(isolation: IsolationType) -> Result<u64, Error> {
                 allowed_error,
             ))
         }
+        #[cfg(not(guest_arch = "x86_64"))]
+        IsolationType::Tdx => None,
         IsolationType::Snp => {
             // SNP currently does not provide the frequency.
             None
-        },
+        }
+        IsolationType::Vbs | IsolationType::None => None,
         IsolationType::Cca => {
             // CCA currently does not provide the frequency.
             None
         }
-        IsolationType::Vbs | IsolationType::None => None,
+
     };
 
     if let Some((hw_frequency, allowed_error)) = hw_info {
