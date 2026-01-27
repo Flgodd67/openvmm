@@ -8,6 +8,7 @@ use super::vp_state;
 use crate::TlbFlushLockAccess;
 use crate::UhPartitionInner;
 // use crate::processor::UhRunVpError;
+use crate::Error;
 use crate::{BackingShared, UhCvmPartitionState, UhCvmVpState, UhPartitionNewParams};
 use aarch64defs::EsrEl2;
 use aarch64defs::SystemReg;
@@ -129,7 +130,7 @@ impl BackingPrivate for CcaBacked {
         this: &mut UhProcessor<'_, Self>,
         dev: &impl CpuIo,
         _stop: &mut virt::StopVp<'_>,
-    ) -> Result<(), VpHaltReason<UhRunVpError>> {
+    ) -> Result<(), VpHaltReason> {
         // TODO: CCA: TDX implementation handled "deliverability notifications" here,
         // no clue what they're about, potentially some VBS stuff?
 
