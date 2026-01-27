@@ -5,6 +5,7 @@ pub mod gic_software_device;
 pub mod vm;
 pub mod vp;
 
+use aarch64defs::Vendor;
 use crate::state::StateElement;
 use inspect::Inspect;
 use mesh_protobuf::Protobuf;
