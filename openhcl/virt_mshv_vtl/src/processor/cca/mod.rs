@@ -356,3 +356,319 @@ impl UhProcessor<'_, CcaBacked> {
     // TODO: CCA: lots of stuff might be needed based on the TDX implementation, something akin to:
     // async fn run_vp_cca(&mut self, dev: &impl CpuIo) -> Result<(), VpHaltReason<UhRunVpError>>
 }
+
+impl AccessVpState for UhVpStateAccess<'_, '_, CcaBacked> {
+    type Error = vp_state::Error;
+
+    fn caps(&self) -> &virt::PartitionCapabilities {
+        &self.vp.partition.caps
+    }
+
+    fn commit(&mut self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+
+    fn registers(&mut self) -> Result<vp::Registers, Self::Error> {
+        
+        let mut reg: vp::Registers = vp::Registers::default();
+
+        let plane_enter = self.vp.runner.cca_rsi_plane_entry();
+
+        reg.x0 = plane_enter.gprs[0];
+        reg.x1 = plane_enter.gprs[1];
+        reg.x2 = plane_enter.gprs[2];
+        reg.x3 = plane_enter.gprs[3];
+        reg.x4 = plane_enter.gprs[4];
+        reg.x5 = plane_enter.gprs[5];
+        reg.x6 = plane_enter.gprs[6];
+        reg.x7 = plane_enter.gprs[7];
+        reg.x8 = plane_enter.gprs[8];
+        reg.x9 = plane_enter.gprs[9];
+        reg.x10 = plane_enter.gprs[10];
+        reg.x11 = plane_enter.gprs[11];
+        reg.x12 = plane_enter.gprs[12];
+        reg.x13 = plane_enter.gprs[13];
+        reg.x14 = plane_enter.gprs[14];
+        reg.x15 = plane_enter.gprs[15];
+        reg.x16 = plane_enter.gprs[16];
+        reg.x17 = plane_enter.gprs[17];
+        reg.x18 = plane_enter.gprs[18];
+        reg.x19 = plane_enter.gprs[19];
+        reg.x20 = plane_enter.gprs[20];
+        reg.x21 = plane_enter.gprs[21];
+        reg.x22 = plane_enter.gprs[22];
+        reg.x23 = plane_enter.gprs[23];
+        reg.x24 = plane_enter.gprs[24];
+        reg.x25 = plane_enter.gprs[25];
+        reg.x26 = plane_enter.gprs[26];
+        reg.x27 = plane_enter.gprs[27];
+        reg.x28 = plane_enter.gprs[28];
+        reg.fp = plane_enter.gprs[29];
+        reg.lr = plane_enter.gprs[30];
+        reg.pc = plane_enter.pc;
+
+
+        Ok(reg)
+    }
+
+    fn set_registers(&mut self, value: &vp::Registers) -> Result<(), Self::Error> {
+        self.vp.runner.cca_plane_trap_simd();
+        self.vp.runner.cca_set_default_pstate();
+
+        let vp::Registers {
+            x0,
+            x1,
+            x2,
+            x3,
+            x4,
+            x5,
+            x6,
+            x7,
+            x8,
+            x9,
+            x10,
+            x11,
+            x12,
+            x13,
+            x14,
+            x15,
+            x16,
+            x17,
+            x18,
+            x19,
+            x20,
+            x21,
+            x22,
+            x23,
+            x24,
+            x25,
+            x26,
+            x27,
+            x28,
+            fp,
+            lr,
+            pc,
+            ..
+        } = value;
+
+        let plane_enter = self.vp.runner.cca_rsi_plane_entry();
+        plane_enter.gprs[0] = *x0;
+        plane_enter.gprs[1] = *x1;
+        plane_enter.gprs[2] = *x2;
+        plane_enter.gprs[3] = *x3;
+        plane_enter.gprs[4] = *x4;
+        plane_enter.gprs[5] = *x5;
+        plane_enter.gprs[6] = *x6;
+        plane_enter.gprs[7] = *x7;
+        plane_enter.gprs[8] = *x8;
+        plane_enter.gprs[9] = *x9;
+        plane_enter.gprs[10] = *x10;
+        plane_enter.gprs[11] = *x11;
+        plane_enter.gprs[12] = *x12;
+        plane_enter.gprs[13] = *x13;
+        plane_enter.gprs[14] = *x14;
+        plane_enter.gprs[15] = *x15;
+        plane_enter.gprs[16] = *x16;
+        plane_enter.gprs[17] = *x17;
+        plane_enter.gprs[18] = *x18;
+        plane_enter.gprs[19] = *x19;
+        plane_enter.gprs[20] = *x20;
+        plane_enter.gprs[21] = *x21;
+        plane_enter.gprs[22] = *x22;
+        plane_enter.gprs[23] = *x23;
+        plane_enter.gprs[24] = *x24;
+        plane_enter.gprs[25] = *x25;
+        plane_enter.gprs[26] = *x26;
+        plane_enter.gprs[27] = *x27;
+        plane_enter.gprs[28] = *x28;
+        plane_enter.gprs[29] = *fp;
+        plane_enter.gprs[30] = *lr;
+        plane_enter.pc = *pc;
+
+        Ok(())
+    }
+
+    fn system_registers(&mut self) -> Result<vp::SystemRegisters, Self::Error> {
+        // TODO: CCA: NEXT: this fails at the end of the TMK
+        todo!()
+    }
+
+    fn set_system_registers(&mut self, _value: &vp::SystemRegisters) -> Result<(), Self::Error> {
+        // TODO: CCA: should figure out where to initialize these registers
+        // Maybe in `CcaBacked::init`?
+        const SCTLR_EL1_DEFAULT: u64 = 0xC50878;
+        const PMCR_EL0_DEFAULT: u64 = 1 << 6;
+        const MDSCR_EL1_DEFAULT: u64 = 1 << 11;
+
+        self.vp
+            .sysreg_write(GuestVtl::Vtl0, SystemReg::SCTLR, SCTLR_EL1_DEFAULT)
+            .map_err(vp_state::Error::SetRegisters)?;
+        self.vp
+            .sysreg_write(GuestVtl::Vtl0, SystemReg::PMCR_EL0, PMCR_EL0_DEFAULT)
+            .map_err(vp_state::Error::SetRegisters)?;
+        self.vp
+            .sysreg_write(GuestVtl::Vtl0, SystemReg::MDSCR_EL1, MDSCR_EL1_DEFAULT)
+            .map_err(vp_state::Error::SetRegisters)
+    }
+}
+
+impl HardwareIsolatedBacking for CcaBacked {
+    fn cvm_state(&self) -> &UhCvmVpState {
+        &self.cvm
+    }
+
+    fn cvm_state_mut(&mut self) -> &mut UhCvmVpState {
+        &mut self.cvm
+    }
+
+    fn cvm_partition_state(shared: &Self::Shared) -> &UhCvmPartitionState {
+        &shared.cvm
+    }
+
+    fn switch_vtl(this: &mut UhProcessor<'_, Self>, _source_vtl: GuestVtl, target_vtl: GuestVtl) {
+        // TODO: CCA: This might need more work when multiple VTLs are supported.
+
+        this.backing.cvm_state_mut().exit_vtl = target_vtl;
+    }
+
+    fn translation_registers(
+        &self,
+        _this: &UhProcessor<'_, Self>,
+        _vtl: GuestVtl,
+    ) -> TranslationRegisters {
+        unimplemented!()
+    }
+
+    fn tlb_flush_lock_access<'a>(
+        vp_index: Option<VpIndex>,
+        partition: &'a UhPartitionInner,
+        shared: &'a Self::Shared,
+    ) -> impl TlbFlushLockAccess + 'a {
+
+        let vp_index_t = vp_index.unwrap_or_else(|| VpIndex::new(0));
+
+        CcaTlbLockFlushAccess {
+            vp_index: vp_index_t,
+            partition,
+            shared,
+        }
+    }
+
+    fn pending_event_vector(this: &UhProcessor<'_, Self>, vtl: GuestVtl) -> Option<u8>{
+        // let event_inject = this.runner.vmsa(vtl).event_inject();
+        // if event_inject.valid() {
+        //     Some(event_inject.vector())
+        // } else {
+        //     None
+        // }
+        None
+    }
+
+    fn is_interrupt_pending(
+        this: &mut UhProcessor<'_, Self>,
+        vtl: GuestVtl,
+        check_rflags: bool,
+        dev: &impl CpuIo,
+    ) -> bool{
+        false
+    }
+
+    fn set_pending_exception(
+        this: &mut UhProcessor<'_, Self>,
+        vtl: GuestVtl,
+        event: hvdef::HvX64PendingExceptionEvent,
+    ){
+
+    }
+
+    ///TODO Place holder. Not implemented for arm64.
+    fn intercept_message_state(
+        this: &UhProcessor<'_, Self>,
+        vtl: GuestVtl,
+        include_optional_state: bool,
+    ) -> InterceptMessageState{
+        InterceptMessageState {
+            instruction_length_and_cr8: 0,
+            cpl: 0,
+            efer_lma: false,
+            cs: hvdef::HvX64SegmentRegister::defaultArm64(),
+            rip: 0,
+            rflags: 0,
+            rax: 0,
+            rdx: 0,
+            rcx: 0,
+            rsi: 0,
+            rdi: 0,
+            optional: None,
+        }
+    }
+
+    fn cr0(this: &UhProcessor<'_, Self>, vtl: GuestVtl) -> u64 {
+        //this.runner.vmsa(vtl).cr0()
+        0
+    }
+
+    fn cr4(this: &UhProcessor<'_, Self>, vtl: GuestVtl) -> u64 {
+        //this.runner.vmsa(vtl).cr4()
+        0
+    }
+
+    fn cr_intercept_registration(
+        this: &mut UhProcessor<'_, Self>,
+        intercept_control: HvRegisterCrInterceptControl,
+    ){}
+
+    fn untrusted_synic_mut(&mut self) -> Option<&mut ProcessorSynic>{
+        None
+    }
+
+    fn update_deadline(this: &mut UhProcessor<'_, Self>, ref_time_now: u64, next_ref_time: u64){
+        unimplemented!()
+    }
+
+
+    fn clear_deadline(this: &mut UhProcessor<'_, Self>){
+        unimplemented!()
+    }
+}
+
+struct CcaTlbLockFlushAccess<'a> {
+    vp_index: VpIndex,
+    partition: &'a UhPartitionInner,
+    shared: &'a CcaBackedShared,
+}
+
+impl TlbFlushLockAccess for CcaTlbLockFlushAccess<'_> {
+    fn flush(&mut self, _vtl: GuestVtl) {
+        unimplemented!()
+    }
+
+    fn flush_entire(&mut self) {
+        unimplemented!()
+    }
+
+    fn set_wait_for_tlb_locks(&mut self, _vtl: GuestVtl) {
+        unimplemented!()
+    }
+}
+
+mod save_restore {
+    use super::CcaBacked;
+    use super::UhProcessor;
+    use vmcore::save_restore::RestoreError;
+    use vmcore::save_restore::SaveError;
+    use vmcore::save_restore::SaveRestore;
+    use vmcore::save_restore::SavedStateNotSupported;
+
+    impl SaveRestore for UhProcessor<'_, CcaBacked> {
+        type SavedState = SavedStateNotSupported;
+
+        fn save(&mut self) -> Result<Self::SavedState, SaveError> {
+            Err(SaveError::NotSupported)
+        }
+
+        fn restore(&mut self, state: Self::SavedState) -> Result<(), RestoreError> {
+            match state {}
+        }
+    }
+}
