@@ -636,7 +636,9 @@ impl virt::ProtoPartition for KvmProtoPartition<'_> {
                     eval: false.into(),
                 })
                 .collect(),
-            caps: PartitionCapabilities {},
+            caps: PartitionCapabilities {
+                vendor: Vendor([0; 12]),
+            },
         };
 
         let partition = KvmPartition {
