@@ -20,7 +20,6 @@ cfg_if::cfg_if!(
         use bitvec::prelude::BitArray;
         use bitvec::prelude::Lsb0;
         use devmsr::MsrDevice;
-        use hv1_emulator::hv::ProcessorVtlHv;
         use processor::LapicState;
         use processor::snp::SnpBackedShared;
         use processor::tdx::TdxBackedShared;
@@ -82,6 +81,7 @@ use hvdef::hypercall::HvGuestOsId;
 use hvdef::hypercall::HvInputVtl;
 use hvdef::hypercall::HvInterceptParameters;
 use hvdef::hypercall::HvInterceptType;
+use hv1_emulator::hv::ProcessorVtlHv;
 use inspect::Inspect;
 use inspect::InspectMut;
 use memory_range::MemoryRange;
@@ -414,9 +414,9 @@ impl UhCvmVpState {
             .allocate_dma_buffer(overlay_pages_required * HV_PAGE_SIZE as usize)
             .map_err(Error::AllocateSharedVisOverlay)?;
 
-        let apic_base = virt::vp::Apic::at_reset(&inner.caps, vp_info).apic_base;
         #[cfg(guest_arch = "x86_64")]
         let lapics = VtlArray::from_fn(|vtl| {
+            let apic_base = virt::vp::Apic::at_reset(&inner.caps, vp_info).apic_base;
             let apic_set = &cvm_partition.lapic[vtl];
 
             // The APIC is software-enabled after reset for secure VTLs, to
