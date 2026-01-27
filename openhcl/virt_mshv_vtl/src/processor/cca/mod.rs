@@ -30,6 +30,13 @@ use super::{BackingSharedParams, UhProcessor, private::BackingPrivate, vp_state:
 #[error("failed to run")]
 struct CcaRunVpError(#[source] hcl::ioctl::Error);
 
+// TODO: CCA: what is this needed for?
+enum UhDirectOverlay {
+    Sipp,
+    Sifp,
+    Count,
+}
+
 #[derive(InspectMut)]
 pub struct CcaBacked {
     vtls: VtlArray<CcaVtl, 2>,
@@ -37,7 +44,7 @@ pub struct CcaBacked {
     cvm: UhCvmVpState
 }
 
-#[derive(InspectMut)]
+#[derive(Clone, Copy, InspectMut, Inspect)]
 struct CcaVtl {
     sp_el0: u64,
     sp_el1: u64,
@@ -54,6 +61,17 @@ pub struct CcaBackedShared {
     #[inspect(iter_by_index)]
     active_vtl: Vec<AtomicU8>,
 }
+
+impl CcaVtl {
+    pub(crate) fn new() -> Self {
+        Self {
+            sp_el0: 0,
+            sp_el1: 0,
+            cpsr: 0,
+        }
+    }
+}
+
 
 impl CcaBackedShared {
     pub(crate) fn new(
