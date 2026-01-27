@@ -1,5 +1,10 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
 
 //! Processor support for CCA Planes.
+
+// TODO: CCA: understand what the common functionality with the HV Arm64 implementation is.
+// This is one of the most stubbed parts of the CCA implementation, lots more work is needed.
 
 use std::sync::atomic::AtomicU8;
 
@@ -10,8 +15,6 @@ use crate::UhPartitionInner;
 // use crate::processor::UhRunVpError;
 use crate::Error;
 use crate::{BackingShared, UhCvmPartitionState, UhCvmVpState, UhPartitionNewParams};
-use crate::processor::InterceptMessageState;
-
 use aarch64defs::EsrEl2;
 use aarch64defs::SystemReg;
 use hcl::protocol::cca_rsi_plane_exit;
@@ -25,6 +28,7 @@ use virt::aarch64::vp;
 use virt::io::CpuIo;
 use virt::{VpHaltReason, aarch64::vp::AccessVpState};
 use virt_support_aarch64emu::translate::TranslationRegisters;
+use crate::processor::InterceptMessageState;
 use hvdef::HvRegisterCrInterceptControl;
 
 use super::{BackingSharedParams, UhProcessor, private::BackingPrivate, vp_state::UhVpStateAccess};
@@ -40,29 +44,24 @@ enum UhDirectOverlay {
     Count,
 }
 
+/// Backing for CCA planes.
 #[derive(InspectMut)]
 pub struct CcaBacked {
     vtls: VtlArray<CcaVtl, 2>,
-
-    cvm: UhCvmVpState
+    cvm: UhCvmVpState,
 }
 
 #[derive(Clone, Copy, InspectMut, Inspect)]
 struct CcaVtl {
+    // CCA: potentially needed fields, based on TDX implementation:
+    // * values of control registers
+    // * interrupt information
+    // * exception error code
+    // * TLB flush state
+    // * PMU stats
     sp_el0: u64,
     sp_el1: u64,
     cpsr: u64,
-}
-
-#[derive(Inspect)]
-pub struct CcaBackedShared {
-    pub(crate) cvm: UhCvmPartitionState,
-    // CCA: potentially needed:
-    // The synic state used for untrusted SINTs, that is, the SINTs for which
-    // the guest thinks it is interacting directly with the untrusted
-    // hypervisor via an architecture-specific interface.
-    #[inspect(iter_by_index)]
-    active_vtl: Vec<AtomicU8>,
 }
 
 impl CcaVtl {
@@ -75,6 +74,16 @@ impl CcaVtl {
     }
 }
 
+#[derive(Inspect)]
+pub struct CcaBackedShared {
+    pub(crate) cvm: UhCvmPartitionState,
+    // CCA: potentially needed:
+    // The synic state used for untrusted SINTs, that is, the SINTs for which
+    // the guest thinks it is interacting directly with the untrusted
+    // hypervisor via an architecture-specific interface.
+    #[inspect(iter_by_index)]
+    active_vtl: Vec<AtomicU8>,
+}
 
 impl CcaBackedShared {
     pub(crate) fn new(
@@ -152,8 +161,9 @@ impl<'a> CcaExit<'a> {
     }
 }
 
+/// Stub, just so we have a type to implement the `BackingPrivate` trait.
 #[derive(Default)]
-pub struct CcaEmulationCache {}
+pub struct CcaEmulationCache;
 
 #[expect(private_interfaces)]
 impl BackingPrivate for CcaBacked {
@@ -170,7 +180,7 @@ impl BackingPrivate for CcaBacked {
 
     fn new(
         params: super::BackingParams<'_, '_, Self>,
-        shared: &Self::Shared,
+        shared: &CcaBackedShared,
     ) -> Result<Self, crate::Error> {
         // TODO: CCA: see below
         // TODO TDX: ssp is for shadow stack
@@ -226,6 +236,11 @@ impl BackingPrivate for CcaBacked {
             .run()
             .map_err(|e| dev.fatal_error(CcaRunVpError(e).into()))?;
 
+        // let mut has_intercept = self
+        //     .runner
+        //     .run()
+        //     .map_err(|e| dev.fatal_error(SnpRunVpError(e).into()))?;
+
         // Preserve the plane context, so we can restore it later.
         this.preserve_plane_context();
 
@@ -280,13 +295,13 @@ impl BackingPrivate for CcaBacked {
     }
 
     fn process_interrupts(
-        this: &mut UhProcessor<'_, Self>,
-        scan_irr: VtlArray<bool, 2>,
-        first_scan_irr: &mut bool,
-        dev: &impl CpuIo,
-    ) -> bool{
-        false
-    }
+            this: &mut UhProcessor<'_, Self>,
+            scan_irr: VtlArray<bool, 2>,
+            first_scan_irr: &mut bool,
+            dev: &impl CpuIo,
+        ) -> bool{
+            false
+        }
 
     fn poll_apic(
         _this: &mut UhProcessor<'_, Self>,
@@ -305,6 +320,14 @@ impl BackingPrivate for CcaBacked {
         unimplemented!();
     }
 
+    // fn handle_cross_vtl_interrupts(
+    //     _this: &mut UhProcessor<'_, Self>,
+    //     _dev: &impl CpuIo,
+    // ) -> Result<bool, UhRunVpError> {
+    //     // TODO: CCA: handle cross VTL interrupts when GIC support is added
+    //     Ok(false)
+    // }
+
     fn hv(&self, _vtl: GuestVtl) -> Option<&ProcessorVtlHv> {
         None
     }
@@ -312,6 +335,14 @@ impl BackingPrivate for CcaBacked {
     fn hv_mut(&mut self, _vtl: GuestVtl) -> Option<&mut ProcessorVtlHv> {
         None
     }
+
+    // fn untrusted_synic(&self) -> Option<&ProcessorSynic> {
+    //     None
+    // }
+
+    // fn untrusted_synic_mut(&mut self) -> Option<&mut ProcessorSynic> {
+    //     None
+    // }
 
     fn handle_vp_start_enable_vtl_wake(
         _this: &mut UhProcessor<'_, Self>,
