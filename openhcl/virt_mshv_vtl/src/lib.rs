@@ -484,6 +484,7 @@ struct UhCvmPartitionState {
     #[inspect(skip)]
     isolated_memory_protector: Arc<dyn ProtectIsolatedMemory>,
     /// The emulated local APIC set.
+    #[cfg(guest_arch = "x86_64")]
     lapic: VtlArray<LocalApicSet, 2>,
     /// The emulated hypervisor state.
     hv: GlobalHv<2>,
@@ -2150,7 +2151,7 @@ impl UhProtoPartition<'_> {
         Ok(guest_vsm_config.maximum_vtl() >= u8::from(GuestVtl::Vtl1))
     }
 
-    #[cfg(guest_arch = "x86_64")]
+    // #[cfg(guest_arch = "x86_64")]
     /// Constructs partition-wide CVM state.
     fn construct_cvm_state(
         params: &UhPartitionNewParams<'_>,
@@ -2199,11 +2200,13 @@ impl UhProtoPartition<'_> {
         });
 
         Ok(UhCvmPartitionState {
+            #[cfg(guest_arch = "x86_64")]
             vps_per_socket: params.topology.reserved_vps_per_socket(),
             tlb_locked_vps,
             vps,
             shared_memory: late_params.shared_gm,
             isolated_memory_protector: late_params.isolated_memory_protector,
+            #[cfg(guest_arch = "x86_64")]
             lapic,
             hv,
             guest_vsm: RwLock::new(GuestVsmState::from_availability(guest_vsm_available)),

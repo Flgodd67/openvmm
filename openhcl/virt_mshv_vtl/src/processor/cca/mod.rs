@@ -8,7 +8,7 @@ use super::vp_state;
 use crate::TlbFlushLockAccess;
 use crate::UhPartitionInner;
 // use crate::processor::UhRunVpError;
-use crate::{BackingShared, UhCvmPartitionState,/* UhCvmVpState,*/ UhPartitionNewParams};
+use crate::{BackingShared, UhCvmPartitionState, UhCvmVpState, UhPartitionNewParams};
 use aarch64defs::EsrEl2;
 use aarch64defs::SystemReg;
 use hcl::protocol::cca_rsi_plane_exit;
