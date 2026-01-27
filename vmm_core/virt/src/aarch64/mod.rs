@@ -30,7 +30,10 @@ impl Aarch64InitialRegs {
 }
 
 #[derive(Debug, Inspect)]
-pub struct Aarch64PartitionCapabilities {}
+pub struct Aarch64PartitionCapabilities {
+    #[inspect(display)]
+    pub vendor: Vendor,
+}
 
 #[derive(Error, Debug)]
 pub enum Aarch64PartitionCapabilitiesError {}
