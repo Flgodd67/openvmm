@@ -31,6 +31,7 @@ cfg_if::cfg_if! {
         pub mod cca;
         use hv1_hypercall::Arm64RegisterState;
         use hvdef::HvArm64RegisterName;
+        use virt_support_aarch64emu::translate::TranslationRegisters;
     } else {
         compile_error!("unsupported guest architecture");
     }
@@ -189,6 +190,7 @@ mod private {
     use crate::GuestVtl;
     use crate::processor::UhProcessor;
     use hv1_emulator::hv::ProcessorVtlHv;
+    use hv1_emulator::synic::ProcessorSynic;
     use hv1_structs::VtlArray;
     use inspect::InspectMut;
     use std::future::Future;
