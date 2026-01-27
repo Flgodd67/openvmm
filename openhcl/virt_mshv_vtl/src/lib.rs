@@ -884,9 +884,14 @@ impl virt::Partition for UhPartition {
         &self.inner.caps
     }
 
+    #[cfg(guest_arch = "x86_64")]
     fn request_msi(&self, vtl: Vtl, request: MsiRequest) {
         self.inner
             .request_msi(vtl.try_into().expect("higher vtl not configured"), request)
+    }
+
+    fn request_msi(&self, _vtl: Vtl, _request: MsiRequest) {
+        todo!()
     }
 
     fn request_yield(&self, _vp_index: VpIndex) {
@@ -2099,9 +2104,22 @@ impl UhPartition {
                     ),
                 )
                 .map_err(|e| anyhow::anyhow!(e)),
-            // TODO
-            #[cfg(guest_arch = "aarch64")]
-            BackingShared::Cca(cca_backed_shared) => None,
+            BackingShared::Cca(cca_backed_shared) => cca_backed_shared
+                .cvm
+                .isolated_memory_protector
+                .register_overlay_page(
+                    vtl,
+                    gpn,
+                    GpnSource::Dma,
+                    HvMapGpaFlags::new(),
+                    Some(new_perms),
+                    &mut CcaBacked::tlb_flush_lock_access(
+                        None,
+                        self.inner.as_ref(),
+                        cca_backed_shared,
+                    ),
+                )
+                .map_err(|e| anyhow::anyhow!(e)),
             BackingShared::Hypervisor(_) => {
                 let _ = (vtl, gpn, new_perms);
                 unreachable!()
