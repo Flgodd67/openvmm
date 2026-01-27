@@ -1373,6 +1373,11 @@ impl UhPartitionInner {
             }
         }
     }
+
+    #[cfg(guest_arch = "aarch64")]
+    fn request_msi(&self, _vtl: GuestVtl, _request: MsiRequest) {
+        todo!();
+    }
 }
 
 impl IoApicRouting for UhPartitionInner {
