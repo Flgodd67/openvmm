@@ -41,6 +41,7 @@ use super::UhPartitionInner;
 use super::UhVpInner;
 use crate::ExitActivity;
 use crate::GuestVtl;
+use crate::TlbFlushLockAccess;
 use crate::WakeReason;
 use cvm_tracing::CVM_ALLOWED;
 use cvm_tracing::CVM_CONFIDENTIAL;
