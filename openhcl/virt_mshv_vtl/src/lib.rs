@@ -61,7 +61,6 @@ use bitvec::vec::BitVec;
 use cvm_tracing::CVM_ALLOWED;
 use guestmem::GuestMemory;
 use guestmem::GuestMemoryBackingError;
-use hcl::GuestVtl;
 use hcl::ioctl::Hcl;
 use hcl::ioctl::SetVsmPartitionConfigError;
 use hv1_emulator::hv::GlobalHv;
@@ -89,6 +88,7 @@ use hvdef::hypercall::HvGuestOsId;
 use hvdef::hypercall::HvInputVtl;
 use hvdef::hypercall::HvInterceptParameters;
 use hvdef::hypercall::HvInterceptType;
+use std::collections::HashMap;
 use inspect::Inspect;
 use inspect::InspectMut;
 use memory_range::MemoryRange;
@@ -102,8 +102,8 @@ use parking_lot::RwLock;
 use processor::BackingSharedParams;
 use processor::SidecarExitReason;
 use sidecar_client::NewSidecarClientError;
-#[cfg(not(guest_arch = "x86_64"))]
-use virt_support_apic::LocalApicSet;
+// #[cfg(not(guest_arch = "x86_64"))]
+// use virt_support_apic::LocalApicSet;
 use std::ops::RangeInclusive;
 use std::os::fd::AsRawFd;
 use std::sync::Arc;
