@@ -195,6 +195,15 @@ impl BackingPrivate for CcaBacked {
         Ok(())
     }
 
+    fn process_interrupts(
+        this: &mut UhProcessor<'_, Self>,
+        scan_irr: VtlArray<bool, 2>,
+        first_scan_irr: &mut bool,
+        dev: &impl CpuIo,
+    ) -> bool{
+        false
+    }
+
     fn poll_apic(
         _this: &mut UhProcessor<'_, Self>,
         _vtl: GuestVtl,
@@ -213,14 +222,6 @@ impl BackingPrivate for CcaBacked {
         unimplemented!();
     }
 
-    fn handle_cross_vtl_interrupts(
-        _this: &mut UhProcessor<'_, Self>,
-        _dev: &impl CpuIo,
-    ) -> Result<bool, UhRunVpError> {
-        // TODO: CCA: handle cross VTL interrupts when GIC support is added
-        Ok(false)
-    }
-
     fn hv(&self, _vtl: GuestVtl) -> Option<&ProcessorVtlHv> {
         None
     }
@@ -229,18 +230,10 @@ impl BackingPrivate for CcaBacked {
         None
     }
 
-    fn untrusted_synic(&self) -> Option<&ProcessorSynic> {
-        None
-    }
-
-    fn untrusted_synic_mut(&mut self) -> Option<&mut ProcessorSynic> {
-        None
-    }
-
     fn handle_vp_start_enable_vtl_wake(
         _this: &mut UhProcessor<'_, Self>,
         _vtl: GuestVtl,
-    ) -> Result<(), UhRunVpError> {
+    ){
         todo!()
     }
 
