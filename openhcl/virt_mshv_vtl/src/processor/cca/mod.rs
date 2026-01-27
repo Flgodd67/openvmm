@@ -70,6 +70,67 @@ impl CcaBackedShared {
     }
 }
 
+/// Types of exceptions that can occur in the CCA plane,
+/// and get reported back to use from the RMM.
+#[derive(Debug, Clone, Copy)]
+#[non_exhaustive]
+enum ExceptionClass {
+    DataAbort,
+    InstructionAbort,
+    SimdAccess,
+}
+
+impl From<u8> for ExceptionClass {
+    fn from(value: u8) -> Self {
+        match value {
+            0b0010_0100 => ExceptionClass::DataAbort,
+            0b0010_0000 => ExceptionClass::InstructionAbort,
+            0b0000_0111 => ExceptionClass::SimdAccess,
+            _ => panic!("Unknown exception class: {value}"),
+        }
+    }
+}
+
+/// The reason for a CCA plane exit, which can be either a synchronous event
+/// (like an MMIO access or an exception) or an IRQ.
+#[derive(Debug, Clone, Copy)]
+enum PlaneExitReason {
+    Sync,
+    Irq,
+}
+
+impl From<u64> for PlaneExitReason {
+    fn from(value: u64) -> Self {
+        match value {
+            0 => PlaneExitReason::Sync,
+            1 => PlaneExitReason::Irq,
+            _ => panic!("Unknown CCA plane exit reason: {value}"),
+        }
+    }
+}
+
+/// A wrapper around the CCA RSI plane exit structure, providing methods to
+/// access information regarding the exit of the plane.
+struct CcaExit<'a>(&'a cca_rsi_plane_exit);
+
+impl<'a> CcaExit<'a> {
+    fn exit_reason(&self) -> PlaneExitReason {
+        self.0.exit_reason.into()
+    }
+
+    fn esr_el2(&self) -> EsrEl2 {
+        self.0.esr_el2.into()
+    }
+
+    fn esr_el2_class(&self) -> ExceptionClass {
+        ExceptionClass::from(EsrEl2::from_bits(self.0.esr_el2).ec())
+    }
+
+    fn far_el2(&self) -> u64 {
+        self.0.far_el2
+    }
+}
+
 #[derive(Default)]
 pub struct CcaEmulationCache {}
 
@@ -210,9 +271,8 @@ impl BackingPrivate for CcaBacked {
         _this: &mut UhProcessor<'_, Self>,
         _vtl: GuestVtl,
         _scan_irr: bool,
-    ) -> Result<(), UhRunVpError> {
+    ){
         // TODO: CCA: poll GIC?
-        Ok(())
     }
 
     fn request_extint_readiness(_this: &mut UhProcessor<'_, Self>) {
