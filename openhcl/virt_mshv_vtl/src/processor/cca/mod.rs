@@ -32,7 +32,7 @@ use crate::processor::InterceptMessageState;
 use hvdef::HvRegisterCrInterceptControl;
 
 use super::{BackingSharedParams, UhProcessor, private::BackingPrivate, vp_state::UhVpStateAccess};
-
+ 
 #[derive(Debug, Error)]
 #[error("failed to run")]
 struct CcaRunVpError(#[source] hcl::ioctl::Error);
