@@ -25,6 +25,10 @@ use virt_support_aarch64emu::translate::TranslationRegisters;
 
 use super::{BackingSharedParams, UhProcessor, private::BackingPrivate, vp_state::UhVpStateAccess};
 
+#[derive(Debug, Error)]
+#[error("failed to run")]
+struct CcaRunVpError(#[source] hcl::ioctl::Error);
+
 #[derive(InspectMut)]
 pub struct CcaBacked {
     vtls: VtlArray<CcaVtl, 2>,
@@ -66,10 +70,7 @@ impl CcaBackedShared {
 }
 
 #[derive(Default)]
-pub struct CcaEmulationCache {
-    segs: [Option<SegmentRegister>; 6],
-    cr0: Option<u64>,
-}
+pub struct CcaEmulationCache {}
 
 #[expect(private_interfaces)]
 impl BackingPrivate for CcaBacked {
@@ -86,7 +87,7 @@ impl BackingPrivate for CcaBacked {
 
     fn new(
         params: super::BackingParams<'_, '_, Self>,
-        shared: &Shared,
+        shared: &Self::Shared,
     ) -> Result<Self, crate::Error> {
         // TODO: CCA: see below
         // TODO TDX: ssp is for shadow stack
@@ -140,7 +141,7 @@ impl BackingPrivate for CcaBacked {
         let intercepted = this
             .runner
             .run()
-            .map_err(|e| VpHaltReason::Hypervisor(UhRunVpError::Run(e)))?;
+            .map_err(|e| dev.fatal_error(CcaRunVpError(e).into()))?;
 
         // Preserve the plane context, so we can restore it later.
         this.preserve_plane_context();
