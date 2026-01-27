@@ -6282,6 +6282,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "rsi"
+version = "0.0.0"
+dependencies = [
+ "aarch64defs",
+ "bitfield-struct 0.11.0",
+ "hvdef",
+ "memory_range",
+ "open_enum",
+ "tracing",
+]
+
+[[package]]
 name = "rusqlite"
 version = "0.37.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8569,6 +8581,7 @@ dependencies = [
  "pal_uring",
  "parking_lot",
  "pci_core",
+ "rsi",
  "safe_intrinsics",
  "safeatomic",
  "sidecar_client",
