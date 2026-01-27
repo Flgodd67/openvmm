@@ -20,9 +20,9 @@ impl<'a, 'p, T: Backing> UhVpStateAccess<'a, 'p, T> {
 #[derive(Debug, Error)]
 pub enum Error {
     #[error("failed to set registers")]
-    SetRegisters(#[source] hcl::ioctl::register::SetRegError),
+    SetRegisters(#[source] hcl::ioctl::Error),
     #[error("failed to get registers")]
-    GetRegisters(#[source] hcl::ioctl::register::GetRegError),
+    GetRegisters(#[source] hcl::ioctl::Error),
     #[error("invalid value {0} for register {1}: {2}")]
     InvalidValue(u64, &'static str, &'static str),
     #[error("'{0}' state is not implemented yet")]
