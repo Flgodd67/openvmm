@@ -382,7 +382,7 @@ impl GuestVsmVpState {
     }
 }
 
-#[cfg(guest_arch = "x86_64")]
+// #[cfg(guest_arch = "x86_64")]
 #[derive(Inspect)]
 /// VP state for CVMs.
 struct UhCvmVpState {
@@ -394,12 +394,13 @@ struct UhCvmVpState {
     /// Hypervisor enlightenment emulator state.
     hv: VtlArray<ProcessorVtlHv, 2>,
     /// LAPIC state.
+    #[cfg(guest_arch = "x86_64")]
     lapics: VtlArray<LapicState, 2>,
     /// Guest VSM state for this vp. Some when VTL 1 is enabled.
+    #[cfg(guest_arch = "x86_64")]
     vtl1: Option<GuestVsmVpState>,
 }
 
-#[cfg(guest_arch = "x86_64")]
 impl UhCvmVpState {
     /// Creates a new CVM VP state.
     pub(crate) fn new(
@@ -414,6 +415,7 @@ impl UhCvmVpState {
             .map_err(Error::AllocateSharedVisOverlay)?;
 
         let apic_base = virt::vp::Apic::at_reset(&inner.caps, vp_info).apic_base;
+        #[cfg(guest_arch = "x86_64")]
         let lapics = VtlArray::from_fn(|vtl| {
             let apic_set = &cvm_partition.lapic[vtl];
 
@@ -437,7 +439,9 @@ impl UhCvmVpState {
             direct_overlay_handle,
             exit_vtl: GuestVtl::Vtl0,
             hv,
+            #[cfg(guest_arch = "x86_64")]
             lapics,
+            #[cfg(guest_arch = "x86_64")]
             vtl1: None,
         })
     }
