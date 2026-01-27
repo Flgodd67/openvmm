@@ -10,6 +10,8 @@ use crate::UhPartitionInner;
 // use crate::processor::UhRunVpError;
 use crate::Error;
 use crate::{BackingShared, UhCvmPartitionState, UhCvmVpState, UhPartitionNewParams};
+use crate::processor::InterceptMessageState;
+
 use aarch64defs::EsrEl2;
 use aarch64defs::SystemReg;
 use hcl::protocol::cca_rsi_plane_exit;
@@ -23,6 +25,7 @@ use virt::aarch64::vp;
 use virt::io::CpuIo;
 use virt::{VpHaltReason, aarch64::vp::AccessVpState};
 use virt_support_aarch64emu::translate::TranslationRegisters;
+use hvdef::HvRegisterCrInterceptControl;
 
 use super::{BackingSharedParams, UhProcessor, private::BackingPrivate, vp_state::UhVpStateAccess};
 
