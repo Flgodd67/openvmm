@@ -7,8 +7,8 @@ use super::HardwareIsolatedBacking;
 use super::vp_state;
 use crate::TlbFlushLockAccess;
 use crate::UhPartitionInner;
-use crate::processor::UhRunVpError;
-use crate::{BackingShared, UhCvmPartitionState, UhCvmVpState, UhPartitionNewParams};
+// use crate::processor::UhRunVpError;
+use crate::{BackingShared, UhCvmPartitionState,/* UhCvmVpState,*/ UhPartitionNewParams};
 use aarch64defs::EsrEl2;
 use aarch64defs::SystemReg;
 use hcl::protocol::cca_rsi_plane_exit;
@@ -37,6 +37,32 @@ struct CcaVtl {
     sp_el0: u64,
     sp_el1: u64,
     cpsr: u64,
+}
+
+#[derive(Inspect)]
+pub struct CcaBackedShared {
+    pub(crate) cvm: UhCvmPartitionState,
+    // CCA: potentially needed:
+    // The synic state used for untrusted SINTs, that is, the SINTs for which
+    // the guest thinks it is interacting directly with the untrusted
+    // hypervisor via an architecture-specific interface.
+    #[inspect(iter_by_index)]
+    active_vtl: Vec<AtomicU8>,
+}
+
+impl CcaBackedShared {
+    pub(crate) fn new(
+        partition_params: &UhPartitionNewParams<'_>,
+        params: BackingSharedParams,
+    ) -> Result<Self, crate::Error> {
+        Ok(Self {
+            cvm: params.cvm_state.unwrap(),
+            // VPs start in VTL 2.
+            active_vtl: std::iter::repeat_n(2, partition_params.topology.vp_count() as usize)
+                .map(AtomicU8::new)
+                .collect(),
+        })
+    }
 }
 
 #[derive(Default)]

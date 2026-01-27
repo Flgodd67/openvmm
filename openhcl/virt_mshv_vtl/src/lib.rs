@@ -2084,7 +2084,7 @@ impl UhPartition {
                 )
                 .map_err(|e| anyhow::anyhow!(e)),
             // TODO
-            #[cdf(guest_arch = "aarch64")]
+            #[cfg(guest_arch = "aarch64")]
             BackingShared::Cca(cca_backed_shared) => None,
             BackingShared::Hypervisor(_) => {
                 let _ = (vtl, gpn, new_perms);
@@ -2130,7 +2130,7 @@ impl UhPartition {
                 unreachable!()
             }
             // TODO
-            #[cdf(guest_arch = "aarch64")]
+            #[cfg(guest_arch = "aarch64")]
             BackingShared::Cca(cca_backed_shared) => None
         }
     }
