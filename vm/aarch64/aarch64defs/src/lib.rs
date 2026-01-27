@@ -872,3 +872,38 @@ open_enum! {
         HIBERNATE_OFF = 1,
     }
 }
+
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
+pub struct Vendor(pub [u8; 12]);
+
+#[cfg(feature = "arbitrary")]
+impl<'a> arbitrary::Arbitrary<'a> for Vendor {
+    fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
+        // 25% of the time generate a random vendor
+        if u.ratio(1, 4)? {
+            Ok(Self(u.arbitrary()?))
+        } else {
+            Ok(*u.choose(&[Self::INTEL, Self::AMD, Self::HYGON])?)
+        }
+    }
+}
+
+impl Vendor {
+    pub fn is_intel_compatible(&self) -> bool {
+        false
+    }
+
+    pub fn is_amd_compatible(&self) -> bool {
+        false
+    }
+}
+
+impl Display for Vendor {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        if let Ok(s) = core::str::from_utf8(&self.0) {
+            f.pad(s)
+        } else {
+            core::fmt::Debug::fmt(&self.0, f)
+        }
+    }
+}
