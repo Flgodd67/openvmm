@@ -11,6 +11,7 @@ pub mod gic;
 pub mod smccc;
 
 use bitfield_struct::bitfield;
+use core::fmt::Display;
 use open_enum::open_enum;
 use zerocopy::FromBytes;
 use zerocopy::Immutable;
