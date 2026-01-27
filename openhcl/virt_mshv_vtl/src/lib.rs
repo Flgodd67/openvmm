@@ -145,6 +145,8 @@ pub enum Error {
     InstallIntercept(HvInterceptType, HvError),
     #[error("failed to query hypervisor register {0:#x?}")]
     Register(HvRegisterName, #[source] HvError),
+    #[error("failed to setup memory perms {0:#x?}")]
+    VtlMem(#[source] HvError),
     #[error("failed to set vsm partition config register")]
     VsmPartitionConfig(#[source] SetVsmPartitionConfigError),
     #[error("failed to create virtual device")]
@@ -919,6 +921,7 @@ impl UhPartitionInner {
         self.vps.get(index.index() as usize)
     }
 
+    #[cfg(guest_arch = "x86_64")]
     fn lapic(&self, vtl: GuestVtl) -> Option<&LocalApicSet> {
         self.backing_shared.cvm_state().map(|x| &x.lapic[vtl])
     }
@@ -1841,7 +1844,10 @@ impl<'a> UhProtoPartition<'a> {
         let software_devices = None;
 
         #[cfg(guest_arch = "aarch64")]
-        let caps = virt::aarch64::Aarch64PartitionCapabilities {};
+        let caps = virt::aarch64::Aarch64PartitionCapabilities {
+            vendor: Vendor([0; 12]),
+        };
+
 
         #[cfg(guest_arch = "x86_64")]
         let cpuid = UhPartition::construct_cpuid_results(
@@ -2179,6 +2185,7 @@ impl UhProtoPartition<'_> {
         let tlb_locked_vps =
             VtlArray::from_fn(|_| BitVec::repeat(false, vp_count).into_boxed_bitslice());
 
+        #[cfg(guest_arch = "x86_64")]
         let lapic = VtlArray::from_fn(|_| {
             LocalApicSet::builder()
                 .x2apic_capable(caps.x2apic)
@@ -2317,7 +2324,6 @@ impl UhPartition {
     }
 }
 
-#[cfg(guest_arch = "x86_64")]
 /// Gets the TSC frequency for the current platform.
 fn get_tsc_frequency(isolation: IsolationType) -> Result<u64, Error> {
     // Always get the frequency from the hypervisor. It's believed that, as long
@@ -2359,6 +2365,10 @@ fn get_tsc_frequency(isolation: IsolationType) -> Result<u64, Error> {
         }
         IsolationType::Snp => {
             // SNP currently does not provide the frequency.
+            None
+        },
+        IsolationType::Cca => {
+            // CCA currently does not provide the frequency.
             None
         }
         IsolationType::Vbs | IsolationType::None => None,
