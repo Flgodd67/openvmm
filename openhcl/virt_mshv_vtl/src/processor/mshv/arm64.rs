@@ -860,7 +860,7 @@ impl UhVpStateAccess<'_, '_, HypervisorBackedArm64> {
         self.vp
             .runner
             .set_vp_registers(self.vtl, names.iter().copied().zip(values))
-            .map_err(vp_state::RegError::SetRegisters)?;
+            .map_err(vp_state::Error::SetRegistersR)?;
         Ok(())
     }
 
@@ -876,7 +876,7 @@ impl UhVpStateAccess<'_, '_, HypervisorBackedArm64> {
         self.vp
             .runner
             .get_vp_registers(self.vtl, &names, &mut values)
-            .map_err(vp_state::RegError::GetRegisters)?;
+            .map_err(vp_state::Error::GetRegistersR)?;
 
         regs.set_values(values.into_iter());
         Ok(regs)
