@@ -362,10 +362,12 @@ impl MemoryAcceptor {
                         vtl: vtl.into(),
                     })
             }
-            IsolationType::Cca => {
-                let mut vtl_permissions = GpaVtlPermissions::Cca(CcaMemPermIndex::default());
-                vtl_permissions.set(vtl, protections);
-                vtl_permissions
+            GpaVtlPermissions::Cca(_index) => {
+                // TODO: CCA: call new ioctl to set perms index
+                // TODO: CCA: next
+                todo!(
+                    "Apply CCA permissions for vtl {vtl:?} on range {range:?} with index {_index:?}"
+                );
             }
         }
     }
