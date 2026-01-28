@@ -121,6 +121,9 @@ enum GpaVtlPermissions {
     Vbs(HvMapGpaFlags),
     Snp(SevRmpAdjust),
     Tdx(TdgMemPageGpaAttr, TdgMemPageAttrWriteR8),
+    // TODO: CCA: we need to use the 'vtl' and 'protections' below to get the correct index
+    // This implies that we've set up the index list properly, and we just select the right one here
+    Cca(CcaMemPermIndex),
 }
 
 impl GpaVtlPermissions {
