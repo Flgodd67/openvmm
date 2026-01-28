@@ -109,7 +109,7 @@ async fn start_vp(
         let driver = pool.client().initiator().clone();
         pool.client().set_idle_task(async move |mut control| {
             let vp = vp
-            /// TODO:  Was virt_mshv_vtl::HypervisorBacked - make so the the virt_mshv_vtl::T can be chosen here not hardcoded
+            // / TODO:  Was virt_mshv_vtl::HypervisorBacked - make so the the virt_mshv_vtl::T can be chosen here not hardcoded
                 .bind_processor::<virt_mshv_vtl::CcaBacked>(&driver, Some(&mut control))
                 .unwrap();
 
