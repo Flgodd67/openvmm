@@ -42,6 +42,7 @@ use memory_range::MemoryRange;
 use parking_lot::Mutex;
 use parking_lot::MutexGuard;
 use registrar::RegisterMemory;
+use rsi::CcaMemPermIndex;
 use std::collections::VecDeque;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
@@ -189,6 +190,9 @@ impl GpaVtlPermissions {
 
                 *attributes = new_attributes;
                 *mask = new_mask;
+            }
+            GpaVtlPermissions::Cca(_index) => {
+                // TODO: CCA: implement me!
             }
         }
     }
@@ -357,6 +361,11 @@ impl MemoryAcceptor {
                         permissions: attributes,
                         vtl: vtl.into(),
                     })
+            }
+            IsolationType::Cca => {
+                let mut vtl_permissions = GpaVtlPermissions::Cca(CcaMemPermIndex::default());
+                vtl_permissions.set(vtl, protections);
+                vtl_permissions
             }
         }
     }
