@@ -14,7 +14,6 @@ use crate::ioctl::ioctls::mshv_realm_config;
 use crate::ioctl::ioctls::mshv_rsi_set_mem_perm;
 use crate::ioctl::ioctls::mshv_rsi_sysreg_write;
 use crate::ioctl::ioctls::{hcl_realm_config, hcl_rsi_set_mem_perm, hcl_rsi_sysreg_write};
-use crate::ioctl::register::SetRegError;
 use crate::protocol::RSI_PLANE_ENTER_FLAGS_TRAP_SIMD;
 use crate::protocol::RSI_PLANE_GIC_NUM_LRS;
 use crate::protocol::RSI_PLANE_NR_GPRS;
@@ -192,7 +191,7 @@ impl ProcessorRunner<'_, Cca> {
         vtl: GuestVtl,
         name: SystemReg,
         value: u64,
-    ) -> Result<(), SetRegError> {
+    ) -> Result<(), Error> {
         self.hcl
             .rsi_sysreg_write(vtl, u32::from(name.0) as u64, value)
             .map_err(Error::SetRegisters)
