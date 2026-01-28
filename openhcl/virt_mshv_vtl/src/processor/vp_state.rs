@@ -22,9 +22,9 @@ impl<'a, 'p, T: Backing> UhVpStateAccess<'a, 'p, T> {
 #[derive(Debug, Error)]
 pub enum Error {
     #[error("failed to set registers")]
-    SetRegisters(#[source] SetRegError),
+    SetRegisters(#[source] hcl::ioctl::Error),
     #[error("failed to get registers")]
-    GetRegisters(#[source] GetRegError),
+    GetRegisters(#[source] hcl::ioctl::Error),
     #[error("the value for setting efer {0} is invalid, {1}")]
     SetEfer(u64, &'static str),
     #[error("'{0}' state is not implemented yet")]

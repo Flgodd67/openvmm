@@ -362,7 +362,7 @@ impl UhProcessor<'_, CcaBacked> {
         vtl: GuestVtl,
         reg: SystemReg,
         val: u64,
-    ) -> Result<(), hcl::ioctl::register::SetRegError> {
+    ) -> Result<(), hcl::ioctl::Error> {
         self.runner.cca_sysreg_write(vtl, reg, val)
     }
 
