@@ -4,6 +4,8 @@
 use super::Backing;
 use super::UhProcessor;
 use crate::GuestVtl;
+use hcl::ioctl::register::GetRegError;
+use hcl::ioctl::register::SetRegError;
 use thiserror::Error;
 
 pub struct UhVpStateAccess<'a, 'b, T: Backing> {
@@ -20,9 +22,9 @@ impl<'a, 'p, T: Backing> UhVpStateAccess<'a, 'p, T> {
 #[derive(Debug, Error)]
 pub enum Error {
     #[error("failed to set registers")]
-    SetRegisters(#[source] hcl::ioctl::Error),
+    SetRegisters(#[source] SetRegError),
     #[error("failed to get registers")]
-    GetRegisters(#[source] hcl::ioctl::Error),
+    GetRegisters(#[source] GetRegError),
     #[error("the value for setting efer {0} is invalid, {1}")]
     SetEfer(u64, &'static str),
     #[error("'{0}' state is not implemented yet")]
