@@ -32,3 +32,12 @@ pub enum Error {
     #[error("failed to set apic base MSR")]
     InvalidApicBase(#[source] virt_support_apic::InvalidApicBase),
 }
+
+/// temp - just to get round some error compatibilities
+#[derive(Debug, Error)]
+pub enum RegError {
+    #[error("failed to set registers")]
+    SetRegisters(#[source] SetRegError),
+    #[error("failed to get registers")]
+    GetRegisters(#[source] GetRegError),
+}
