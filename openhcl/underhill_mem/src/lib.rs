@@ -139,6 +139,11 @@ impl GpaVtlPermissions {
                 vtl_permissions.set(vtl, protections);
                 vtl_permissions
             }
+            IsolationType::Cca => {
+                let mut vtl_permissions = GpaVtlPermissions::Cca(CcaMemPermIndex::default());
+                vtl_permissions.set(vtl, protections);
+                vtl_permissions
+            }
         }
     }
 
@@ -249,6 +254,10 @@ impl MemoryAcceptor {
                     .tdx_accept_pages(range, Some((attributes, mask)))
                     .map_err(|err| AcceptPagesError::Tdx { error: err, range })
             }
+            IsolationType::Cca => {
+                // TODO: CCA: do we need to set RIPAS here?
+                Ok(())
+            }
         }
     }
 
@@ -274,6 +283,9 @@ impl MemoryAcceptor {
 
             IsolationType::Tdx => {
                 // Nothing to do for TDX.
+            }
+            IsolationType::Cca => {
+                // TODO: CCA: anything to do here?
             }
         }
     }
