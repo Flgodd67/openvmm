@@ -1689,10 +1689,16 @@ impl<'a> UhProtoPartition<'a> {
         #[cfg(guest_arch = "x86_64")]
         set_vtl2_vsm_partition_config(&hcl)?;
 
+        #[cfg(guest_arch != "aarch64")]
         let privs = hcl
             .get_privileges_and_features_info()
             .map_err(Error::GetReg)?;
-        let guest_vsm_available = Self::check_guest_vsm_support(privs, &hcl)?;
+        
+        if cfg(guest_aarch = "aarch64") {
+            let guest_vsm_available = Self::check_guest_vsm_support(None, &hcl)?;
+        } else {
+            let guest_vsm_available = Self::check_guest_vsm_support(privs, &hcl)?;
+        }
 
         #[cfg(guest_arch = "x86_64")]
         let cpuid = match params.isolation {
@@ -2215,9 +2221,12 @@ impl UhPartition {
 impl UhProtoPartition<'_> {
     /// Whether Guest VSM is available to the guest. If so, for hardware CVMs,
     /// it is safe to expose Guest VSM support via cpuid.
-    fn check_guest_vsm_support(privs: HvPartitionPrivilege, hcl: &Hcl) -> Result<bool, Error> {
-        if !privs.access_vsm() {
-            return Ok(false);
+    fn check_guest_vsm_support(privs: Option<HvPartitionPrivilege>, hcl: &Hcl) -> Result<bool, Error> {
+
+        if let Some(p) = privs {
+            if !privs.access_vsm() {
+                return Ok(false);
+            }
         }
 
         let guest_vsm_config = hcl
