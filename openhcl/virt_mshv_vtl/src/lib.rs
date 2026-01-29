@@ -1690,16 +1690,17 @@ impl<'a> UhProtoPartition<'a> {
         #[cfg(guest_arch = "x86_64")]
         set_vtl2_vsm_partition_config(&hcl)?;
 
-        #[cfg(guest_arch != "aarch64")]
+        #[cfg(guest_arch = "x86_64")]
         let privs = hcl
             .get_privileges_and_features_info()
             .map_err(Error::GetReg)?;
         
+        let guest_vsm_available: bool = false;
         if cfg!(guest_arch = "aarch64") {
-            let guest_vsm_available = Self::check_guest_vsm_support(None, &hcl)?;
+            guest_vsm_available = Self::check_guest_vsm_support(None, &hcl)?;
         } else {
             let privs = Some(privs);
-            let guest_vsm_available = Self::check_guest_vsm_support(privs, &hcl)?;
+            guest_vsm_available = Self::check_guest_vsm_support(privs, &hcl)?;
         }
 
         #[cfg(guest_arch = "x86_64")]
