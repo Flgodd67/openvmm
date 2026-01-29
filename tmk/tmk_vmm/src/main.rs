@@ -93,7 +93,6 @@ enum HypervisorOpt {
 }
 
 async fn do_main(driver: DefaultDriver) -> anyhow::Result<()> {
-    println!("In DO MAIN");
     let opts = Options::parse();
 
     if opts.list {
