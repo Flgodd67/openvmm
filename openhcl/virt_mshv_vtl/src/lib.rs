@@ -1640,7 +1640,7 @@ impl<'a> UhProtoPartition<'a> {
 
         // Try to open the sidecar device, if it is present.
         let sidecar = sidecar_client::SidecarClient::new(driver).map_err(Error::Sidecar)?;
-        if let Some(temp) = sidecar {
+        if let Some(&temp) = sidecar {
             println!("sidecar has value");
         }else{
             println!("sidecar has NO value");
