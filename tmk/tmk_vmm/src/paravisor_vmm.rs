@@ -38,7 +38,10 @@ impl RunContext<'_> {
             // TODO: match openhcl defaults when TDX is supported.
             disable_lower_vtl_timer_virt: true,
         };
-        println!("Before UhProtoPartition {}", params.isolation);
+        println!("Before UhProtoPartition");
+        if isolation == virt::IsolationType::Cca {
+            println!("Is CCA isolation");
+        }
         let p = virt_mshv_vtl::UhProtoPartition::new(params, |_| self.state.driver.clone())?;
         println!("After UhProtoPartition");
         let vtom = if cfg!(guest_arch = "aarch64") {
