@@ -45,6 +45,8 @@ impl RunContext<'_> {
             None
         };
 
+        println!("After vtom assigned");
+
         /// TODO ionut sets p.cca_set_mem_perm() here with hugetlbfs. Should I just allocate some memory?
 
         let m = underhill_mem::init(&underhill_mem::Init {
