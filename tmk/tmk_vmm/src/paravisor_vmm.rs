@@ -21,6 +21,7 @@ impl RunContext<'_> {
         isolation: virt::IsolationType,
         test: &crate::load::TestInfo,
     ) -> anyhow::Result<TestResult> {
+        println!("Top of run_paravisor_vmm");
         let params = UhPartitionNewParams {
             isolation,
             hide_isolation: false,
