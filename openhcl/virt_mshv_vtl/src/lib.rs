@@ -1613,6 +1613,7 @@ pub struct UhProtoPartition<'a> {
     params: UhPartitionNewParams<'a>,
     hcl: Hcl,
     guest_vsm_available: bool,
+    #[cfg(guest_arch = "x86_64")]
     create_partition_available: bool,
     #[cfg(guest_arch = "x86_64")]
     cpuid: virt::CpuidLeafSet,
@@ -1697,6 +1698,7 @@ impl<'a> UhProtoPartition<'a> {
         if cfg(guest_aarch = "aarch64") {
             let guest_vsm_available = Self::check_guest_vsm_support(None, &hcl)?;
         } else {
+            let privs = Some(privs);
             let guest_vsm_available = Self::check_guest_vsm_support(privs, &hcl)?;
         }
 
@@ -1726,6 +1728,7 @@ impl<'a> UhProtoPartition<'a> {
             hcl,
             params,
             guest_vsm_available,
+            #[cfg(guest_arch = "x86_64")]
             create_partition_available: privs.create_partitions(),
             #[cfg(guest_arch = "x86_64")]
             cpuid,
@@ -1754,6 +1757,7 @@ impl<'a> UhProtoPartition<'a> {
             mut hcl,
             params,
             guest_vsm_available,
+            #[cfg(guest_arch = "x86_64")]
             create_partition_available: _,
             #[cfg(guest_arch = "x86_64")]
             cpuid,
@@ -2224,7 +2228,7 @@ impl UhProtoPartition<'_> {
     fn check_guest_vsm_support(privs: Option<HvPartitionPrivilege>, hcl: &Hcl) -> Result<bool, Error> {
 
         if let Some(p) = privs {
-            if !privs.access_vsm() {
+            if !p.access_vsm() {
                 return Ok(false);
             }
         }
