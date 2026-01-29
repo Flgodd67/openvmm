@@ -1835,11 +1835,18 @@ impl Hcl {
         #[cfg(guest_arch = "x86_64")]
         let supports_lower_vtl_timer_virt = mshv_fd.check_extension(HCL_CAP_LOWER_VTL_TIMER_VIRT)?;
 
+        #[cfg(guest_arch = "x86_64")]
         tracing::debug!(
             supports_vtl_ret_action,
             supports_register_page,
-            #[cfg(guest_arch = "x86_64")]
             supports_lower_vtl_timer_virt,
+            "HCL capabilities",
+        );
+
+        #[cfg(guest_arch = "aarch64")]
+        tracing::debug!(
+            supports_vtl_ret_action,
+            supports_register_page,
             "HCL capabilities",
         );
 
