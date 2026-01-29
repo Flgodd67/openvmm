@@ -1640,12 +1640,17 @@ impl<'a> UhProtoPartition<'a> {
 
         // Try to open the sidecar device, if it is present.
         let sidecar = sidecar_client::SidecarClient::new(driver).map_err(Error::Sidecar)?;
-
+        if let Some(temp) = sidecar {
+            println!("sidecar has value");
+        }else{
+            println!("sidecar has NO value");
+        }
         let hcl = Hcl::new(hcl_isolation, sidecar).map_err(Error::Hcl)?;
+        println!("After hcl::new()");
 
         #[cfg(guest_arch = "aarch64")]
         let realm_config = hcl.get_realm_config().map_err(Error::Hcl)?;
-
+        println!("After realm_config");
         // Set the hypercalls that this process will use.
         let mut allowed_hypercalls = vec![
             hvdef::HypercallCode::HvCallGetVpRegisters,
