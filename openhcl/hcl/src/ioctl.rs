@@ -1389,6 +1389,7 @@ pub struct Hcl {
     supports_vtl_ret_action: bool,
     supports_register_page: bool,
     dr6_shared: bool,
+     #[cfg(guest_arch = "x86_64")]
     supports_lower_vtl_timer_virt: bool,
     isolation: IsolationType,
     snp_register_bitmap: [u8; 64],
@@ -1833,10 +1834,11 @@ impl Hcl {
 
         #[cfg(guest_arch = "x86_64")]
         let supports_lower_vtl_timer_virt = mshv_fd.check_extension(HCL_CAP_LOWER_VTL_TIMER_VIRT)?;
-        
+
         tracing::debug!(
             supports_vtl_ret_action,
             supports_register_page,
+            #[cfg(guest_arch = "x86_64")]
             supports_lower_vtl_timer_virt,
             "HCL capabilities",
         );
@@ -1861,6 +1863,7 @@ impl Hcl {
             supports_vtl_ret_action,
             supports_register_page,
             dr6_shared,
+             #[cfg(guest_arch = "x86_64")]
             supports_lower_vtl_timer_virt,
             isolation,
             snp_register_bitmap,
