@@ -1695,7 +1695,7 @@ impl<'a> UhProtoPartition<'a> {
             .get_privileges_and_features_info()
             .map_err(Error::GetReg)?;
         
-        if cfg(guest_aarch = "aarch64") {
+        if cfg!(guest_aarch = "aarch64") {
             let guest_vsm_available = Self::check_guest_vsm_support(None, &hcl)?;
         } else {
             let privs = Some(privs);
@@ -1744,6 +1744,7 @@ impl<'a> UhProtoPartition<'a> {
 
     /// Returns whether this partition has the create partitions hypercall
     /// available.
+    #[cfg(guest_arch = "x86_64")]
     pub fn create_partition_available(&self) -> bool {
         self.create_partition_available
     }
