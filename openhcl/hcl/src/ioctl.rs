@@ -1430,6 +1430,7 @@ impl Hcl {
     }
 
     /// Returns true if timer virtualization for lower VTL is supported.
+    #[cfg(guest_arch = "x86_64")]
     pub fn supports_lower_vtl_timer_virt(&self) -> bool {
         self.supports_lower_vtl_timer_virt
     }

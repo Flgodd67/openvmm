@@ -1646,7 +1646,6 @@ impl<'a> UhProtoPartition<'a> {
             println!("sidecar has NO value");
         }
         let hcl = Hcl::new(hcl_isolation, sidecar).map_err(Error::Hcl)?;
-        println!("After hcl::new()");
 
         #[cfg(guest_arch = "aarch64")]
         let realm_config = hcl.get_realm_config().map_err(Error::Hcl)?;
@@ -1943,6 +1942,7 @@ impl<'a> UhProtoPartition<'a> {
         #[cfg(guest_arch = "aarch64")]
         let cvm_state = None;
 
+        #[cfg(guest_arch = "x86_64")]
         let lower_vtl_timer_virt_available =
             hcl.supports_lower_vtl_timer_virt() && !params.disable_lower_vtl_timer_virt;
 
@@ -1955,6 +1955,7 @@ impl<'a> UhProtoPartition<'a> {
                 cpuid: &cpuid,
                 hcl: &hcl,
                 guest_vsm_available,
+                #[cfg(guest_arch = "x86_64")]
                 lower_vtl_timer_virt_available,
             },
         )?;
