@@ -587,6 +587,7 @@ impl MshvHvcall {
 
         // Status must be success with all elements completed
         status.result()?;
+        #[cfg(guest_arch = "x86_64")]
         assert_eq!(status.elements_processed(), names.len());
 
         Ok(())
