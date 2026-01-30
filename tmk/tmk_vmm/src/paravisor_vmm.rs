@@ -45,6 +45,7 @@ impl RunContext<'_> {
         let p = virt_mshv_vtl::UhProtoPartition::new(params, |_| self.state.driver.clone())?;
         println!("After UhProtoPartition");
         let vtom = if cfg!(guest_arch = "aarch64") {
+            println!("{}", p.realm_config().ipa_width());
             Some(1 << (p.realm_config().ipa_width() - 1))
         } else {
             None
