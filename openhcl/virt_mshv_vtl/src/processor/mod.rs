@@ -871,8 +871,10 @@ impl<'a, T: Backing> UhProcessor<'a, T> {
             .runner(inner.vp_index().index(), idle_control.is_none())
             .unwrap();
 
+        println!("Before T::shared");
         let backing_shared = T::shared(&partition.backing_shared);
 
+        println!("Before T::new");
         let backing = T::new(
             BackingParams {
                 partition,
