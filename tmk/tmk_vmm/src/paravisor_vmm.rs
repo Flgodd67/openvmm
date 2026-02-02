@@ -78,6 +78,7 @@ impl RunContext<'_> {
         let dma_manager = OpenhclDmaManager::new(
             &[],
             &self
+                .state
                 .memory_layout
                 .ram()
                 .iter()
@@ -94,6 +95,7 @@ impl RunContext<'_> {
         let shared_dma_manager = OpenhclDmaManager::new(
             &[],
             &self
+                .state
                 .shared_memory_layout
                 .ram()
                 .iter()
