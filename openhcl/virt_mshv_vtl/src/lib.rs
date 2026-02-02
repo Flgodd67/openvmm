@@ -1960,7 +1960,7 @@ impl<'a> UhProtoPartition<'a> {
             None
         };
 
-        if let Some(cv) = cvm_state { println!("has value"); }
+        if cvm_state.is_some() { println!("has value"); }
 
         #[cfg(guest_arch = "x86_64")]
         let lower_vtl_timer_virt_available =
