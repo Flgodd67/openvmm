@@ -1777,6 +1777,8 @@ impl<'a> UhProtoPartition<'a> {
         let isolation = params.isolation;
         let is_hardware_isolated = isolation.is_hardware_isolated();
 
+        println!("top of build fn");
+
         // Intercept Debug Exceptions
         // On TDX because all OpenHCL TDs today have the debug policy bit set,
         // OpenHCL registers for the intercepts itself.
@@ -1942,6 +1944,8 @@ impl<'a> UhProtoPartition<'a> {
             )
             .expect("registering synic intercept cannot fail");
         }
+
+        println!("before the cvm_state is set");
 
         //#[cfg(guest_arch = "x86_64")]
         let cvm_state = if is_hardware_isolated {
