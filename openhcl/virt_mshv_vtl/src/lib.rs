@@ -1943,7 +1943,7 @@ impl<'a> UhProtoPartition<'a> {
             .expect("registering synic intercept cannot fail");
         }
 
-        #[cfg(guest_arch = "x86_64")]
+        //#[cfg(guest_arch = "x86_64")]
         let cvm_state = if is_hardware_isolated {
             let vsm_caps = hcl.get_vsm_capabilities().map_err(Error::GetReg)?;
             let proxy_interrupt_redirect_available =
@@ -1959,8 +1959,6 @@ impl<'a> UhProtoPartition<'a> {
         } else {
             None
         };
-        #[cfg(guest_arch = "aarch64")]
-        let cvm_state = None;
 
         #[cfg(guest_arch = "x86_64")]
         let lower_vtl_timer_virt_available =
