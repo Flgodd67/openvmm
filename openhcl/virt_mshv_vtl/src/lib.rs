@@ -1946,9 +1946,10 @@ impl<'a> UhProtoPartition<'a> {
         }
 
         println!("before the cvm_state is set");
-
+        println!("is_hardware_isolated: {}", is_hardware_isolated);
         //#[cfg(guest_arch = "x86_64")]
         let cvm_state = if is_hardware_isolated {
+            println!("in setting cvm_state");
             let vsm_caps = hcl.get_vsm_capabilities().map_err(Error::GetReg)?;
             let proxy_interrupt_redirect_available =
                 vsm_caps.proxy_interrupt_redirect_available() && !params.disable_proxy_redirect;
