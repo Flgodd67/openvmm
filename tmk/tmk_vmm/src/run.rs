@@ -33,6 +33,7 @@ pub struct CommonState {
     pub opts: Options,
     pub processor_topology: ProcessorTopology,
     pub memory_layout: MemoryLayout,
+    pub shared_memory_layout: MemoryLayout,
 }
 
 pub struct RunContext<'a> {
@@ -71,13 +72,23 @@ impl CommonState {
         .context("failed to build processor topology")?;
 
         let ram_size = 0x400000;
+
+        #[cfg(guest_arch = "x86_64")]
         let memory_layout = MemoryLayout::new(ram_size, &[], None).context("bad memory layout")?;
+
+        #[cfg(guest_arch = "aarch64")]
+        let mut memory_layout =
+            MemoryLayout::new(ram_size, &[], None).context("bad memory layout")?;
+        #[cfg(guest_arch = "aarch64")]
+        let mut shared_memory_layout =
+            MemoryLayout::new(ram_size, &[], None).context("bad memory layout")?;
 
         Ok(Self {
             driver,
             opts,
             processor_topology,
             memory_layout,
+            shared_memory_layout,
         })
     }
 
