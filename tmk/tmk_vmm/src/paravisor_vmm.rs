@@ -15,6 +15,13 @@ use virt_mshv_vtl::UhLateParams;
 use virt_mshv_vtl::UhPartitionNewParams;
 use virt_mshv_vtl::UhProcessorBox;
 
+use crate::run::CommonState;
+use core::slice;
+use openhcl_dma_manager::AllocationVisibility;
+use openhcl_dma_manager::DmaClientParameters;
+use openhcl_dma_manager::LowerVtlPermissionPolicy;
+use openhcl_dma_manager::OpenhclDmaManager;
+
 impl RunContext<'_> {
     pub async fn run_paravisor_vmm(
         &mut self,
