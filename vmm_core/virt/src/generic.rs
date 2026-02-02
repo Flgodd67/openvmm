@@ -83,7 +83,7 @@ impl IsolationType {
 
     /// Returns whether the isolation type is hardware-backed.
     pub fn is_hardware_isolated(&self) -> bool {
-        matches!(self, Self::Snp | Self::Tdx)
+        matches!(self, Self::Snp | Self::Tdx | Self::Cca)
     }
 }
 
