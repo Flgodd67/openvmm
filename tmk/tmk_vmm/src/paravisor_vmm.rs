@@ -75,6 +75,35 @@ impl RunContext<'_> {
         })
         .await?;
 
+        let dma_manager = OpenhclDmaManager::new(
+            &[],
+            &self
+                .memory_layout
+                .ram()
+                .iter()
+                .map(|r| r.range)
+                .collect::<Vec<_>>(),
+            vtom.unwrap_or(0),
+            isolation,
+        )
+        .expect("failed to create global dma manager");
+        // Needed because if we use the same DMA manager for both below,
+        // the shared manager will end up allocating some pages at the start of the address space,
+        // which will conflict with the private allocations and erase some of the ELF sections
+        // of the TMK.
+        let shared_dma_manager = OpenhclDmaManager::new(
+            &[],
+            &self
+                .shared_memory_layout
+                .ram()
+                .iter()
+                .map(|r| r.range)
+                .collect::<Vec<_>>(),
+            vtom.unwrap_or(0),
+            isolation,
+        )
+        .expect("failed to create global dma manager");
+
         let (partition, vps) = p
             .build(UhLateParams {
                 gm: [
