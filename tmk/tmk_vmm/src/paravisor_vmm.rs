@@ -46,7 +46,7 @@ impl RunContext<'_> {
         println!("After UhProtoPartition");
         let vtom = if cfg!(guest_arch = "aarch64") {
             println!("{}", p.realm_config().ipa_width());
-            Some(1 << (p.realm_config().ipa_width() - 1))
+            Some((1 as u64) << (p.realm_config().ipa_width() - 1))
         } else {
             None
         };
