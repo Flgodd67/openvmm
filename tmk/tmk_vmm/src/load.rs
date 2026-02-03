@@ -257,6 +257,7 @@ pub fn enumerate_tests(tmk: &File) -> anyhow::Result<Vec<TestInfo>> {
 ///    address space. An invalid address may still produce a result, but it will be
 ///    for an unrelated page.
 /// 3. Reading `/proc/self/pagemap` typically requires `CAP_SYS_ADMIN` privileges.
+#[allow(unsafe_code)]
 pub unsafe fn virt_to_phys(vaddr: u64) -> Result<u64, String> {
     // Constants based on the kernel's pagemap documentation.
     const PFN_BITS: u64 = 55;
