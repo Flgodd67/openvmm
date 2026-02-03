@@ -98,7 +98,7 @@ impl CommonState {
             MemoryLayout::new(ram_size, &[], None).context("bad memory layout")?;
 
         let non_zero_size =NonZeroUsize::new(4096 as usize).expect("Size was already checked to be non-zero");
-        
+        let file = OpenOptions::new().read(true).write(true).open("/dev/zero")?;
         #[allow(unsafe_code)]
         let addr = unsafe {
             mmap(
@@ -106,11 +106,11 @@ impl CommonState {
                 non_zero_size,
                 ProtFlags::PROT_READ | ProtFlags::PROT_WRITE,
                 MapFlags::MAP_PRIVATE | MapFlags::MAP_ANONYMOUS,
-                -1,
+                &file,
                 0,
             )
         }
-        .map_err(|e| format!("Failed to memory-map bytes: {e}"))?;
+        .context("Failed to memory-map bytes")?;
 
         #[allow(unsafe_code)]
         let pa = unsafe { load::virt_to_phys(addr.as_ptr() as u64) }
