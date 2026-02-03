@@ -27,7 +27,18 @@ use vmcore::vmtime::VmTimeSource;
 use zerocopy::TryFromBytes as _;
 use hcl::ioctl::cca::Cca;
 use std::fs::OpenOptions;
-use crate::load;
+use nix::sys::mman::mmap;
+use vm_topology::memory::MemoryRangeWithNode;
+use memory_range::MemoryRange;
+use core::ops::Range;
+
+use nix::{
+    sys::{
+        mman::{MapFlags, ProtFlags, mmap},
+        statfs::statfs,
+    },
+    unistd::{ftruncate, mkstemp, unlink},
+};
 
 pub const COMMAND_ADDRESS: u64 = 0xffff_0000;
 
@@ -87,18 +98,21 @@ impl CommonState {
         let mut shared_memory_layout =
             MemoryLayout::new(ram_size, &[], None).context("bad memory layout")?;
 
+        let non_zero_size =NonZeroUsize::new(4096 as usize).expect("Size was already checked to be non-zero");
+        
         let addr = unsafe {
-                    mmap(
-                        std::ptr::null_mut(),
-                        4096,
-                        PROT_READ | PROT_WRITE,
-                        MAP_PRIVATE | MAP_ANONYMOUS,
-                        -1,
-                        0,
-                    )
-                };
+            mmap(
+                None,
+                non_zero_size,
+                ProtFlags::PROT_READ | ProtFlags::PROT_WRITE,
+                MapFlags::MAP_PRIVATE | MapFlags::MAP_ANONYMOUS,
+                -1,
+                0,
+            )
+        }
+        .map_err(|e| format!("Failed to memory-map {size} bytes: {e}"))?;
 
-        let pa = unsafe { load::virt_to_phys(addr) }
+        let pa = unsafe { load::virt_to_phys(addr.as_ptr() as u64) }
                 .map_err(anyhow::Error::msg)
                 .context("failed to get hugetlbfs physical address")?;
 
@@ -114,7 +128,7 @@ impl CommonState {
             )
             .context("bad memory layout")?;
 
-        let offset_mem = Some(pa);
+        let offset_memory = Some(pa);
 
         Ok(Self {
             driver,

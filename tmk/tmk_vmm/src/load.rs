@@ -25,6 +25,19 @@ use zerocopy::FromBytes as _;
 use zerocopy::FromZeros;
 use zerocopy::IntoBytes;
 
+use nix::{
+    sys::{
+        mman::{MapFlags, ProtFlags, mmap},
+        statfs::statfs,
+    },
+    unistd::{ftruncate, mkstemp, unlink},
+};
+use std::{
+    num::NonZeroUsize,
+    os::unix::{fs::FileExt, io::FromRawFd},
+    path::Path,
+};
+
 /// Loads a TMK, returning the initial registers for the BSP.
 #[cfg_attr(not(guest_arch = "x86_64"), expect(dead_code))]
 pub fn load_x86(
