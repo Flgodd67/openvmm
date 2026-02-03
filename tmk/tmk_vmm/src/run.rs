@@ -176,7 +176,7 @@ impl RunContext<'_> {
 
         // Load the TMK.
         let tmk = fs_err::File::open(&self.state.opts.tmk).context("failed to open tmk")?;
-        println!("{}", &self.state.opts.tmk.display());
+
         let regs = {
             #[cfg(guest_arch = "x86_64")]
             {

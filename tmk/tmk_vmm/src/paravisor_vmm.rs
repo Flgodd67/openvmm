@@ -28,7 +28,6 @@ impl RunContext<'_> {
         isolation: virt::IsolationType,
         test: &crate::load::TestInfo,
     ) -> anyhow::Result<TestResult> {
-        println!("Top of run_paravisor_vmm");
         let params = UhPartitionNewParams {
             isolation,
             hide_isolation: false,
@@ -45,20 +44,15 @@ impl RunContext<'_> {
             // TODO: match openhcl defaults when TDX is supported.
             disable_lower_vtl_timer_virt: true,
         };
-        println!("Before UhProtoPartition");
-        if isolation == virt::IsolationType::Cca {
-            println!("Is CCA isolation");
-        }
+
         let p = virt_mshv_vtl::UhProtoPartition::new(params, |_| self.state.driver.clone())?;
-        println!("After UhProtoPartition");
+
         let vtom = if cfg!(guest_arch = "aarch64") {
-            println!("{}", p.realm_config().ipa_width());
+
             Some((1 as u64) << (p.realm_config().ipa_width() - 1))
         } else {
             None
         };
-
-        println!("After vtom assigned");
 
         /// TODO ionut sets p.cca_set_mem_perm() here with hugetlbfs. Should I just allocate some memory?
 

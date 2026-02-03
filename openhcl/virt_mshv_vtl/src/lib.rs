@@ -1641,16 +1641,12 @@ impl<'a> UhProtoPartition<'a> {
 
         // Try to open the sidecar device, if it is present.
         let sidecar = sidecar_client::SidecarClient::new(driver).map_err(Error::Sidecar)?;
-        if let Some(ref temp) = sidecar {
-            println!("sidecar has value");
-        }else{
-            println!("sidecar has NO value");
-        }
+
         let hcl = Hcl::new(hcl_isolation, sidecar).map_err(Error::Hcl)?;
 
         #[cfg(guest_arch = "aarch64")]
         let realm_config = hcl.get_realm_config().map_err(Error::Hcl)?;
-        println!("After realm_config");
+
         // Set the hypercalls that this process will use.
         let mut allowed_hypercalls = vec![
             hvdef::HypercallCode::HvCallGetVpRegisters,
@@ -1777,7 +1773,6 @@ impl<'a> UhProtoPartition<'a> {
         let isolation = params.isolation;
         let is_hardware_isolated = isolation.is_hardware_isolated();
 
-        println!("top of build fn");
 
         // Intercept Debug Exceptions
         // On TDX because all OpenHCL TDs today have the debug policy bit set,
@@ -1945,11 +1940,8 @@ impl<'a> UhProtoPartition<'a> {
             .expect("registering synic intercept cannot fail");
         }
 
-        println!("before the cvm_state is set");
-        println!("is_hardware_isolated: {}", is_hardware_isolated);
         //#[cfg(guest_arch = "x86_64")]
         let cvm_state = if is_hardware_isolated {
-            println!("in setting cvm_state");
             let vsm_caps = hcl.get_vsm_capabilities().map_err(Error::GetReg)?;
             let proxy_interrupt_redirect_available =
                 vsm_caps.proxy_interrupt_redirect_available() && !params.disable_proxy_redirect;
@@ -1965,7 +1957,6 @@ impl<'a> UhProtoPartition<'a> {
             None
         };
 
-        if cvm_state.is_some() { println!("has value"); }
 
         #[cfg(guest_arch = "x86_64")]
         let lower_vtl_timer_virt_available =

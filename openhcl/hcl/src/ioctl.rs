@@ -1788,7 +1788,7 @@ impl Hcl {
 
         // Open both mshv fds
         let mshv_fd = Mshv::new()?;
-        println!("after MsHv::new()");
+
         // Validate the hypervisor's advertised isolation type matches the
         // requested isolation type. In CVM scenarios, this is not trusted, so
         // we still need the isolation type from the caller.
