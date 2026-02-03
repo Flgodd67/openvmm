@@ -27,11 +27,10 @@ use vmcore::vmtime::VmTimeSource;
 use zerocopy::TryFromBytes as _;
 use hcl::ioctl::cca::Cca;
 use std::fs::OpenOptions;
-use nix::sys::mman::mmap;
 use vm_topology::memory::MemoryRangeWithNode;
 use memory_range::MemoryRange;
 use core::ops::Range;
-
+use std::num::NonZeroUsize;
 use nix::{
     sys::{
         mman::{MapFlags, ProtFlags, mmap},
@@ -100,6 +99,7 @@ impl CommonState {
 
         let non_zero_size =NonZeroUsize::new(4096 as usize).expect("Size was already checked to be non-zero");
         
+        #[allow(unsafe_code)]
         let addr = unsafe {
             mmap(
                 None,
@@ -110,11 +110,12 @@ impl CommonState {
                 0,
             )
         }
-        .map_err(|e| format!("Failed to memory-map {size} bytes: {e}"))?;
+        .map_err(|e| format!("Failed to memory-map bytes: {e}"))?;
 
+        #[allow(unsafe_code)]
         let pa = unsafe { load::virt_to_phys(addr.as_ptr() as u64) }
                 .map_err(anyhow::Error::msg)
-                .context("failed to get hugetlbfs physical address")?;
+                .context("failed to get page physical address")?;
 
         memory_layout = MemoryLayout::new_from_ranges(
                 &[MemoryRangeWithNode {
