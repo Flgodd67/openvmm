@@ -25,6 +25,9 @@ use vmcore::vmtime::VmTime;
 use vmcore::vmtime::VmTimeKeeper;
 use vmcore::vmtime::VmTimeSource;
 use zerocopy::TryFromBytes as _;
+use hcl::ioctl::cca::Cca;
+use std::fs::OpenOptions;
+use crate::load;
 
 pub const COMMAND_ADDRESS: u64 = 0xffff_0000;
 
@@ -34,6 +37,7 @@ pub struct CommonState {
     pub processor_topology: ProcessorTopology,
     pub memory_layout: MemoryLayout,
     pub shared_memory_layout: MemoryLayout,
+    pub offset_memory: Option<u64>,
 }
 
 pub struct RunContext<'a> {
@@ -83,12 +87,42 @@ impl CommonState {
         let mut shared_memory_layout =
             MemoryLayout::new(ram_size, &[], None).context("bad memory layout")?;
 
+        let addr = unsafe {
+                    mmap(
+                        std::ptr::null_mut(),
+                        4096,
+                        PROT_READ | PROT_WRITE,
+                        MAP_PRIVATE | MAP_ANONYMOUS,
+                        -1,
+                        0,
+                    )
+                };
+
+        let pa = unsafe { load::virt_to_phys(addr) }
+                .map_err(anyhow::Error::msg)
+                .context("failed to get hugetlbfs physical address")?;
+
+        memory_layout = MemoryLayout::new_from_ranges(
+                &[MemoryRangeWithNode {
+                    range: MemoryRange::new(Range {
+                        start: pa,
+                        end: pa + ram_size / 2,
+                    }),
+                    vnode: 0,
+                }],
+                &[],
+            )
+            .context("bad memory layout")?;
+
+        let offset_mem = Some(pa);
+
         Ok(Self {
             driver,
             opts,
             processor_topology,
             memory_layout,
             shared_memory_layout,
+            offset_memory,
         })
     }
 
@@ -192,6 +226,7 @@ impl RunContext<'_> {
             #[cfg(guest_arch = "aarch64")]
             {
                 load::load_aarch64(
+                    self.state.offset_memory,
                     &self.state.memory_layout,
                     guest_memory,
                     &self.state.processor_topology,

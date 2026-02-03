@@ -48,6 +48,7 @@ underhill_mem.workspace = true
 virt_kvm.workspace = true
 virt_mshv.workspace = true
 virt_mshv_vtl.workspace = true
+hcl.workspace = true
 
 [target.'cfg(target_os = "macos")'.dependencies]
 virt_hvf.workspace = true
