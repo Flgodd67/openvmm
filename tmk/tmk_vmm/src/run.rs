@@ -39,6 +39,9 @@ use nix::{
     unistd::{ftruncate, mkstemp, unlink},
 };
 
+//temp
+// use crate::mapped_page::MappedPage;
+
 pub const COMMAND_ADDRESS: u64 = 0xffff_0000;
 
 pub struct CommonState {
@@ -111,6 +114,14 @@ impl CommonState {
             )
         }
         .context("Failed to memory-map bytes")?;
+
+        // Touch the mapping: write 0 to the first byte.
+        #[allow(unsafe_code)]
+        unsafe {
+            // `addr` from nix::sys::mman::mmap is a NonNull<c_void>.
+            // Cast to u8 pointer and write a single byte.
+            (addr.as_ptr() as *mut u8).write_volatile(0);
+        }
 
         #[allow(unsafe_code)]
         let pa = unsafe { load::virt_to_phys(addr.as_ptr() as u64) }
