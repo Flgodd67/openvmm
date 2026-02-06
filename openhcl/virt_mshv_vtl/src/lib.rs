@@ -702,6 +702,7 @@ impl UhProcessorBox {
         driver: &impl Driver,
         control: Option<&'a mut IdleControl>,
     ) -> Result<UhProcessor<'a, T>, Error> {
+        println!("in bind+processor");
         if let Some(control) = &control {
             let vp_index = self.vp_info.base.vp_index;
 

@@ -275,6 +275,7 @@ impl RunContext<'_> {
             }
         };
 
+         println!("Before lambda run() called");
         start_vp(
             self,
             RunnerBuilder::new(
