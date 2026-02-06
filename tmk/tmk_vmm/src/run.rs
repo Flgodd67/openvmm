@@ -132,7 +132,7 @@ impl CommonState {
         const ALIGN: u64 = 4096 as u64 * 8; // 32KiB
 
         let raw_start = pa;
-        let raw_end = pa + + map_size;
+        let raw_end = pa + map_size;
 
         let start = (raw_start + ALIGN - 1) & !(ALIGN - 1); // align up
         let end   = raw_end & !(ALIGN - 1);                 // align down
