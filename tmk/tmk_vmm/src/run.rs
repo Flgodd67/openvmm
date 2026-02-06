@@ -108,7 +108,7 @@ impl CommonState {
                 None,
                 non_zero_size,
                 ProtFlags::PROT_READ | ProtFlags::PROT_WRITE,
-                MapFlags::MAP_PRIVATE | MapFlags::MAP_ANONYMOUS,
+                MapFlags::MAP_SHARED,
                 &file,
                 0,
             )
