@@ -135,6 +135,7 @@ impl RunContext<'_> {
 
         let partition = Arc::new(partition);
 
+        println!("Before run() called");
         let mut threads = Vec::new();
         let r = self
             .run(m.vtl0(), partition.caps(), test, async |_this, runner| {
@@ -167,7 +168,7 @@ async fn start_vp(
             // / TODO:  Was virt_mshv_vtl::HypervisorBacked - make so the the virt_mshv_vtl::T can be chosen here not hardcoded
                 .bind_processor::<virt_mshv_vtl::CcaBacked>(&driver, Some(&mut control))
                 .unwrap();
-
+            println!("before run_vp() called");
             runner.build(vp).unwrap().run_vp().await;
         });
         pool.run()
