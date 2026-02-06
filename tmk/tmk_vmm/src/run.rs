@@ -99,8 +99,9 @@ impl CommonState {
         #[cfg(guest_arch = "aarch64")]
         let mut shared_memory_layout =
             MemoryLayout::new(ram_size, &[], None).context("bad memory layout")?;
-
-        let non_zero_size =NonZeroUsize::new(4096 as usize).expect("Size was already checked to be non-zero");
+        
+        let map_size = ram_size / 2;
+        let non_zero_size =NonZeroUsize::new(map_size as usize).expect("Size was already checked to be non-zero");
         let file = OpenOptions::new().read(true).write(true).open("/dev/zero")?;
         #[allow(unsafe_code)]
         let addr = unsafe {
@@ -131,7 +132,7 @@ impl CommonState {
         const ALIGN: u64 = 4096 as u64 * 8; // 32KiB
 
         let raw_start = pa;
-        let raw_end = pa + ram_size / 2;
+        let raw_end = pa + + map_size;
 
         let start = (raw_start + ALIGN - 1) & !(ALIGN - 1); // align up
         let end   = raw_end & !(ALIGN - 1);                 // align down
