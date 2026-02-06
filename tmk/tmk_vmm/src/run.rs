@@ -128,11 +128,23 @@ impl CommonState {
                 .map_err(anyhow::Error::msg)
                 .context("failed to get page physical address")?;
 
+        const ALIGN: u64 = 4096 as u64 * 8; // 32KiB
+
+        let raw_start = pa;
+        let raw_end = pa + ram_size / 2;
+
+        let start = (raw_start + ALIGN - 1) & !(ALIGN - 1); // align up
+        let end   = raw_end & !(ALIGN - 1);                 // align down
+
+        if start >= end {
+            return Err(anyhow::anyhow!("range too small after alignment"));
+        }
+
         memory_layout = MemoryLayout::new_from_ranges(
                 &[MemoryRangeWithNode {
                     range: MemoryRange::new(Range {
-                        start: pa,
-                        end: pa + ram_size / 2,
+                        start,
+                        end,
                     }),
                     vnode: 0,
                 }],
