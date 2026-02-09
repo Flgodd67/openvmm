@@ -151,6 +151,23 @@ impl CommonState {
         //     return Err(anyhow::anyhow!("range too small after alignment"));
         // }
 
+        const PAGE: u64 = 4096;
+        const ALIGN: u64 = PAGE * 8;
+
+        fn align_up(x: u64, a: u64) -> u64 { (x + a - 1) & !(a - 1) }
+        fn align_down(x: u64, a: u64) -> u64 { x & !(a - 1) }
+
+        fn push_aligned_run(mem_ranges: &mut Vec<MemoryRangeWithNode>, start: u64, end: u64) {
+            let astart = align_up(start, ALIGN);
+            let aend = align_down(end, ALIGN);
+            if astart < aend {
+                mem_ranges.push(MemoryRangeWithNode {
+                    range: MemoryRange::new(std::ops::Range { start: astart, end: aend }),
+                    vnode: 0,
+                });
+            }
+        }
+
         let mut page_starts: Vec<u64> = vec![];
         let mut mem_ranges: Vec<MemoryRangeWithNode> = vec![];
 
@@ -173,30 +190,17 @@ impl CommonState {
         for i in 1..page_starts.len(){
 
             if page_starts[i] == currEnd {
-                currEnd = page_starts[i] + 4096;
+                currEnd += PAGE;
                 continue;
             }
 
-            mem_ranges.push(MemoryRangeWithNode {
-                    range: MemoryRange::new(Range {
-                        start: currStart,
-                        end: currEnd,
-                    }),
-                    vnode: 0,
-                });
+            push_aligned_run(&mut mem_ranges, currStart, currEnd);
             currStart = page_starts[i];
-            currEnd = currStart + 4096;
+            currEnd = currStart + PAGE;
         }
 
-        if currStart != mem_ranges.last().unwrap().range.start() {
-            mem_ranges.push(MemoryRangeWithNode {
-                    range: MemoryRange::new(Range {
-                        start: currStart,
-                        end: currEnd,
-                    }),
-                    vnode: 0,
-                });
-        }
+        push_aligned_run(&mut mem_ranges, currStart, currEnd);
+
 
         memory_layout = MemoryLayout::new_from_ranges(
                 &mem_ranges,
