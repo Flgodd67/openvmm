@@ -168,12 +168,12 @@ impl CommonState {
         }
 
         let mut currStart: u64 = page_starts[0];
-        let mut currEnd: u64 = page_starts[0] + 4096 - 1;
+        let mut currEnd: u64 = page_starts[0] + 4096;
         let mut prev: bool = true;
         for i in 1..page_starts.len(){
 
-            if page_starts[i] - 1 == currEnd {
-                currEnd = page_starts[i] + 4096 - 1;
+            if page_starts[i] == currEnd {
+                currEnd = page_starts[i] + 4096;
                 continue;
             }
 
@@ -185,7 +185,7 @@ impl CommonState {
                     vnode: 0,
                 });
             currStart = page_starts[i];
-            currEnd = currStart + 4096 -1;
+            currEnd = currStart + 4096;
         }
 
         if currStart != mem_ranges.last().unwrap().range.start() {
