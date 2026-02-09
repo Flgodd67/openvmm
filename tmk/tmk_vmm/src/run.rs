@@ -128,7 +128,7 @@ impl CommonState {
 
         #[allow(unsafe_code)]
         unsafe {
-                std::ptr::write_bytes(addr.as_ptr() as *mut u8, 0, map_size);
+                std::ptr::write_bytes(addr.as_ptr() as *mut u8, 0, map_size as usize);
             }
 
         #[allow(unsafe_code)]
