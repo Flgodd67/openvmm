@@ -100,7 +100,7 @@ impl CommonState {
         let temp_size: u64 = 0;
         #[cfg(guest_arch = "aarch64")]
         let mut shared_memory_layout =
-            MemoryLayout::new(temp_size, &[], None).context("bad memory layout")?;
+            MemoryLayout::new(ram_size, &[], None).context("bad memory layout")?;
         
         let map_size = ram_size / 2;
         let non_zero_size =NonZeroUsize::new(map_size as usize).expect("Size was already checked to be non-zero");
@@ -119,12 +119,17 @@ impl CommonState {
         .context("Failed to memory-map bytes")?;
 
         // Touch the mapping: write 0 to the first byte.
+        // #[allow(unsafe_code)]
+        // unsafe {
+        //     // `addr` from nix::sys::mman::mmap is a NonNull<c_void>.
+        //     // Cast to u8 pointer and write a single byte.
+        //     (addr.as_ptr() as *mut u8).write_volatile(0);
+        // }
+
         #[allow(unsafe_code)]
         unsafe {
-            // `addr` from nix::sys::mman::mmap is a NonNull<c_void>.
-            // Cast to u8 pointer and write a single byte.
-            (addr.as_ptr() as *mut u8).write_volatile(0);
-        }
+                std::ptr::write_bytes(addr.as_ptr() as *mut u8, 0, map_size);
+            }
 
         #[allow(unsafe_code)]
         let pa = unsafe { load::virt_to_phys(addr.as_ptr() as u64) }
