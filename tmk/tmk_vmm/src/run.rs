@@ -155,7 +155,7 @@ impl CommonState {
         let mut mem_ranges: Vec<MemoryRangeWithNode> = vec![];
 
         let mut va: u64 = addr.as_ptr() as u64;
-        let mut size_track: i32 = 0;
+        let mut size_track: u64 = 0;
         while size_track < map_size {
             size_track += 4096;
             #[allow(unsafe_code)]
@@ -179,8 +179,8 @@ impl CommonState {
 
             mem_ranges.push(MemoryRangeWithNode {
                     range: MemoryRange::new(Range {
-                        currStart,
-                        currEnd,
+                        start: currStart,
+                        end: currEnd,
                     }),
                     vnode: 0,
                 });
@@ -188,11 +188,11 @@ impl CommonState {
             currEnd = currStart + 4096 -1;
         }
 
-        if currStart != mem_ranges.last().0 {
+        if currStart != mem_ranges.last().unwrap().range.start() {
             mem_ranges.push(MemoryRangeWithNode {
                     range: MemoryRange::new(Range {
-                        currStart,
-                        currEnd,
+                        start: currStart,
+                        end: currEnd,
                     }),
                     vnode: 0,
                 });
