@@ -131,10 +131,10 @@ impl CommonState {
                 std::ptr::write_bytes(addr.as_ptr() as *mut u8, 0, map_size as usize);
             }
 
-        // #[allow(unsafe_code)]
-        // let pa = unsafe { load::virt_to_phys(addr.as_ptr() as u64) }
-        //         .map_err(anyhow::Error::msg)
-        //         .context("failed to get page physical address")?;
+        #[allow(unsafe_code)]
+        let pa = unsafe { load::virt_to_phys(addr.as_ptr() as u64) }
+                .map_err(anyhow::Error::msg)
+                .context("failed to get page physical address")?;
 
         // const ALIGN: u64 = 4096 as u64 * 8; // 32KiB
 
@@ -163,7 +163,7 @@ impl CommonState {
                 .map_err(anyhow::Error::msg)
                 .context("failed to get page physical address")?;
             
-            pages.push(pa_temp);
+            page_starts.push(pa_temp);
             va += 4096;
         }
 
