@@ -137,6 +137,9 @@ impl CommonState {
         let start = (raw_start + ALIGN - 1) & !(ALIGN - 1); // align up
         let end   = raw_end & !(ALIGN - 1);                 // align down
 
+        println!("raw_start: {} , raw_end: {}", raw_start, raw_end);
+        println!("start: {}, end: {}", start, end);
+
         if start >= end {
             return Err(anyhow::anyhow!("range too small after alignment"));
         }
