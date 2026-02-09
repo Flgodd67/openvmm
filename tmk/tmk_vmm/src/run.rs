@@ -131,34 +131,75 @@ impl CommonState {
                 std::ptr::write_bytes(addr.as_ptr() as *mut u8, 0, map_size as usize);
             }
 
-        #[allow(unsafe_code)]
-        let pa = unsafe { load::virt_to_phys(addr.as_ptr() as u64) }
+        // #[allow(unsafe_code)]
+        // let pa = unsafe { load::virt_to_phys(addr.as_ptr() as u64) }
+        //         .map_err(anyhow::Error::msg)
+        //         .context("failed to get page physical address")?;
+
+        // const ALIGN: u64 = 4096 as u64 * 8; // 32KiB
+
+        // let raw_start = pa;
+        // let raw_end = pa + map_size;
+
+        // let start = (raw_start + ALIGN - 1) & !(ALIGN - 1); // align up
+        // let end   = raw_end & !(ALIGN - 1);                 // align down
+
+        // println!("raw_start: {} , raw_end: {}", raw_start, raw_end);
+        // println!("start: {}, end: {}", start, end);
+
+        // if start >= end {
+        //     return Err(anyhow::anyhow!("range too small after alignment"));
+        // }
+
+        let mut page_starts: Vec<u64> = vec![];
+        let mut mem_ranges: Vec<MemoryRangeWithNode> = vec![];
+
+        let mut va: u64 = addr.as_ptr() as u64;
+        let mut size_track: i32 = 0;
+        while size_track < map_size {
+            size_track += 4096;
+            #[allow(unsafe_code)]
+            let pa_temp = unsafe { load::virt_to_phys(va) }
                 .map_err(anyhow::Error::msg)
                 .context("failed to get page physical address")?;
+            
+            pages.push(pa_temp);
+            va += 4096;
+        }
 
-        const ALIGN: u64 = 4096 as u64 * 8; // 32KiB
+        let mut currStart: u64 = page_starts[0];
+        let mut currEnd: u64 = page_starts[0] + 4096 - 1;
+        let mut prev: bool = true;
+        for i in 1..page_starts.len(){
 
-        let raw_start = pa;
-        let raw_end = pa + map_size;
+            if page_starts[i] - 1 == currEnd {
+                currEnd = page_starts[i] + 4096 - 1;
+                continue;
+            }
 
-        let start = (raw_start + ALIGN - 1) & !(ALIGN - 1); // align up
-        let end   = raw_end & !(ALIGN - 1);                 // align down
+            mem_ranges.push(MemoryRangeWithNode {
+                    range: MemoryRange::new(Range {
+                        currStart,
+                        currEnd,
+                    }),
+                    vnode: 0,
+                });
+            currStart = page_starts[i];
+            currEnd = currStart + 4096 -1;
+        }
 
-        println!("raw_start: {} , raw_end: {}", raw_start, raw_end);
-        println!("start: {}, end: {}", start, end);
-
-        if start >= end {
-            return Err(anyhow::anyhow!("range too small after alignment"));
+        if currStart != mem_ranges.last().0 {
+            mem_ranges.push(MemoryRangeWithNode {
+                    range: MemoryRange::new(Range {
+                        currStart,
+                        currEnd,
+                    }),
+                    vnode: 0,
+                });
         }
 
         memory_layout = MemoryLayout::new_from_ranges(
-                &[MemoryRangeWithNode {
-                    range: MemoryRange::new(Range {
-                        start,
-                        end,
-                    }),
-                    vnode: 0,
-                }],
+                &mem_ranges,
                 &[],
             )
             .context("bad memory layout")?;
