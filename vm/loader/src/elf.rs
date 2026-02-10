@@ -107,7 +107,7 @@ where
     let reader = ReadCache::new(kernel_image);
     let ehdr: &elf::FileHeader64<LE> = reader.read_at(0).map_err(|_| Error::ReadFileHeader)?;
 
-    println!("file header: {}", ehdr);
+    println!("file header: {:?}", ehdr);
 
     // Sanity checks
     if !ehdr.is_supported() {
