@@ -208,7 +208,7 @@ impl CommonState {
             )
             .context("bad memory layout")?;
 
-        let offset_memory = Some(pa);
+        let offset_memory = Some(page_starts[0]);
 
         Ok(Self {
             driver,
@@ -304,6 +304,7 @@ impl RunContext<'_> {
 
         // Load the TMK.
         let tmk = fs_err::File::open(&self.state.opts.tmk).context("failed to open tmk")?;
+        println!("tmk file path: {}",&self.state.opts.tmk.display());
 
         let regs = {
             #[cfg(guest_arch = "x86_64")]
