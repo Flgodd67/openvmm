@@ -17,11 +17,13 @@ use crate::UhCvmVpState;
 use crate::UhPartitionInner;
 use crate::processor::InterceptMessageState;
 use aarch64defs::EsrEl2;
+use aarch64defs::HpfarEl2;
 use aarch64defs::IssDataAbort;
 use aarch64defs::SystemReg;
 use aarch64defs::rsi::cca_rsi_plane_exit;
 use hcl::GuestVtl;
 use hcl::ioctl::cca::Cca;
+use hcl::ioctl::cca::mshv_rsi_get_ipa_state;
 use hcl::ioctl::register;
 use hv1_emulator::hv::ProcessorVtlHv;
 use hv1_emulator::synic::ProcessorSynic;
@@ -167,6 +169,10 @@ impl<'a> CcaExit<'a> {
 
     fn far_el2(&self) -> u64 {
         self.0.far_el2
+    }
+
+    fn hpfar_el2(&self) -> HpfarEl2 {
+        self.0.hpfar_el2.into()
     }
 
     fn gpr_or_zero_register(&self, index: u8) -> Option<u64> {
@@ -345,7 +351,58 @@ impl BackingPrivate for CcaBacked {
                         }
                         ExceptionClass::InstructionAbort => {
                             // Handle instruction abort
-                            todo!();
+                            let far = cca_exit.far_el2();
+                            let hpfar = cca_exit.hpfar_el2();
+                            let fipa = hpfar.fipa() | (far & 0xfff);
+
+                            // 1) fetch was from outside PAR
+                            // let memory_layout = &this.partition.lower_vtl_memory_layout;
+                            // let memory_range = &memory_layout.ram()[0].range;
+                            let realm_config = match this.partition.hcl.get_realm_config() {
+                                Ok(config) => config,
+                                Err(_) => {
+                                    return Ok(());
+                                }
+                            };
+                            let ipa_width = realm_config.ipa_width();
+                            let par_start = 0u64;
+                            let par_end = (1u64 << ipa_width) as u64;
+                            if fipa >= par_end || fipa < par_start {
+
+                                tracing::warn!(
+                                    "CCA InstructionAbort: fetch was outside of PAR"
+                                );
+                                return Err(dev.fatal_error(CcaUnsupportedExit::ExitReason(0).into()));
+
+                            }
+
+                            // 2a) check whether there is a permission fault, with the memory being RIPAS_DEV
+                            // arm64_is_protected_mmio function in kernel - need to create ioctl to call
+                            // or just use the functions I created rsi_get_ipa_state
+                            // 3) check whether address is in 'empty' memory - RIPAS_EMPTY
+                            // need to add an ioctl and then use function rsi_ipa_state_get()
+                            let mut plane_state = mshv_rsi_get_ipa_state{ fipa, state: u64::MAX};
+                            this.ipa_state_read(GuestVtl::Vtl0, &mut plane_state).map_err(|_| Error::Hcl);
+
+                            if plane_state.state == 0 {
+                                println!("state is RIPAS_EMPTY");
+                            }
+
+                            if plane_state.state == 3 {
+                                println!("state is RIPAS_DEV");
+                            }
+
+                            // 2b) for checking permissions
+                            let backing_shared = &this.partition.backing_shared;
+                            // let cvm_state = backing_shared.cvm_state();
+
+                            if let Some(cvm) = backing_shared.cvm_state() {
+                                if cvm.isolated_memory_protector.check_vtl0_permissons_enabled(GuestVtl::Vtl0, far)
+                                    .map_err(|err| VpHaltReason::TripleFault { vtl: hvdef::Vtl::Vtl0 })? {
+                                    // will check whether its user executable or kernel executable or neither
+                                }
+                            }
+
                         }
                         ExceptionClass::SimdAccess => {
                             this.runner.cca_plane_no_trap_simd();
@@ -446,6 +503,14 @@ impl UhProcessor<'_, CcaBacked> {
         val: &mut u64,
     ) -> Result<(), register::GetRegError> {
         self.runner.cca_sysreg_read(vtl, reg, val)
+    }
+
+    fn ipa_state_read(
+        &self,
+        vtl: GuestVtl,
+        state: &mut mshv_rsi_get_ipa_state,
+    ) -> Result<(), Error> {
+        self.runner.cca_ipa_state_read(vtl, state).map_err(Error::Hcl)
     }
 
     fn set_plane_enter(&mut self) {
