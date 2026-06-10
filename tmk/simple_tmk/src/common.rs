@@ -60,7 +60,7 @@ fn boot(_: TestContext<'_>) {
 core::arch::global_asm! {
     ".global instruction_abort_permissions_enabled_a",
     "instruction_abort_permissions_enabled_a:",
-    "movz x16, #0xffff",
+    "movz x16, #0xf000",
     "movk x16, #0x847f, lsl #16",
     "br x16",
 }
