@@ -353,7 +353,7 @@ impl BackingPrivate for CcaBacked {
                             // Handle instruction abort
                             let far = cca_exit.far_el2();
                             let hpfar = cca_exit.hpfar_el2();
-                            let fipa = hpfar.fipa() | (far & 0xfff);
+                            let fipa = (hpfar.fipa() << 12) | (far & 0xfff);
 
                             // 1) fetch was from outside PAR
                             // let memory_layout = &this.partition.lower_vtl_memory_layout;
