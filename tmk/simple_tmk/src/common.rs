@@ -56,3 +56,24 @@ fn boot(_: TestContext<'_>) {
 //         instruction_abort_ripas_empty_a();
 //     }
 // }
+
+core::arch::global_asm! {
+    ".global instruction_abort_permissions_enabled_a",
+    "instruction_abort_permissions_enabled_a:",
+    "movz x16, #0xffff",
+    "movk x16, #0x847f, lsl #16",
+    "br x16",
+}
+
+unsafe extern "C" {
+    fn instruction_abort_permissions_enabled_a() -> !;
+}
+
+#[tmk_test]
+fn instruction_abort_permissions_enabled(_: TestContext<'_>) {
+    log!("instruction_abort_permissions_enabled");
+
+    unsafe {
+        instruction_abort_permissions_enabled_a();
+    }
+}
