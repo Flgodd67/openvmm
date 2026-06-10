@@ -885,7 +885,8 @@ impl<'a, T: Backing> UhProcessor<'a, T> {
         const PAGE_SIZE: u64 = 4096;
 
         let ram = partition.lower_vtl_memory_layout.ram();
-
+        let mut check: bool = false;
+        let mut fipa_for_test = 0u64;
         for r in ram {
             let s = r.range.start();
             let e = r.range.end();
@@ -909,10 +910,14 @@ impl<'a, T: Backing> UhProcessor<'a, T> {
                         ipa,
                         ipa + PAGE_SIZE - 1
                     );
+                    check = true;
+                    fipa_for_test = ipa;
+                    break;
                 }
-
-                ipa += PAGE_SIZE;
+                ipa -= PAGE_SIZE;
             }
+
+            if check { break; }
         }
 
         let mut vp = Self {
