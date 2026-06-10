@@ -367,6 +367,7 @@ impl BackingPrivate for CcaBacked {
                             let ipa_width = realm_config.ipa_width();
                             let par_start = 0u64;
                             let par_end = (1u64 << ipa_width) as u64;
+                            println!("FIPA: {}", fipa);
                             if fipa >= par_end || fipa < par_start {
 
                                 tracing::warn!(
