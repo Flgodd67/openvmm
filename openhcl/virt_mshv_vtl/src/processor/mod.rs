@@ -38,6 +38,7 @@ cfg_if::cfg_if! {
     }
 }
 
+use hcl::ioctl::cca::mshv_rsi_get_ipa_state;
 use super::Error;
 use super::UhPartitionInner;
 use super::UhVpInner;
@@ -880,6 +881,39 @@ impl<'a, T: Backing> UhProcessor<'a, T> {
             },
             backing_shared,
         )?;
+
+        const PAGE_SIZE: u64 = 4096;
+
+        let ram = partition.lower_vtl_memory_layout.ram();
+
+        for r in ram {
+            let s = r.range.start();
+            let e = r.range.end();
+
+            let rl = partition.hcl.get_realm_config();
+
+            let mut ipa = (s + PAGE_SIZE - 1) & !(PAGE_SIZE - 1);
+            while ipa >= 0 {
+                let mut plane_state = mshv_rsi_get_ipa_state {
+                    fipa: ipa,
+                    state: u64::MAX,
+                };
+
+                let _ = partition
+                    .hcl
+                    .rsi_get_ipa_state(GuestVtl::Vtl0, &mut plane_state);
+
+                if plane_state.state == 1 {
+                    println!(
+                        "page {:#x}-{:#x} is RIPAS_RAM",
+                        ipa,
+                        ipa + PAGE_SIZE - 1
+                    );
+                }
+
+                ipa += PAGE_SIZE;
+            }
+        }
 
         let mut vp = Self {
             partition,
