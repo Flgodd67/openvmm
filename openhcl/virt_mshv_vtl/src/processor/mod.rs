@@ -889,8 +889,8 @@ impl<'a, T: Backing> UhProcessor<'a, T> {
         for r in ram {
             let s = r.range.start();
             let e = r.range.end();
-
-            let rl = partition.hcl.get_realm_config();
+            println!("start of range: {}, end of range: {}", s, e);
+            // let rl = partition.hcl.get_realm_config();
 
             let mut ipa = (s + PAGE_SIZE - 1) & !(PAGE_SIZE - 1);
             while ipa >= 0 {
@@ -903,7 +903,7 @@ impl<'a, T: Backing> UhProcessor<'a, T> {
                     .hcl
                     .rsi_get_ipa_state(GuestVtl::Vtl0, &mut plane_state);
 
-                if plane_state.state == 1 {
+                if plane_state.state == 1 && ipa < s || ipa > e{
                     println!(
                         "page {:#x}-{:#x} is RIPAS_RAM",
                         ipa,
