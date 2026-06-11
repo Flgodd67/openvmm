@@ -335,7 +335,7 @@ open_enum! {
         /// Valid only for instruction fault.
         GRANULE_PROTECTION_FAULT_LEVEL2 = 0b100110,
         /// Valid only for instruction fault.
-        GRANULE_PROTECTION_FAULT_LEVE3 = 0b100111,
+        GRANULE_PROTECTION_FAULT_LEVEL3 = 0b100111,
         ADDRESS_SIZE_FAULT_LEVEL_NEG1 = 0b101001,
         TRANSLATION_FAULT_LEVEL_NEG1 = 0b101011,
         TLB_CONFLICT_ABORT = 0b110000,
@@ -349,9 +349,87 @@ impl FaultStatusCode {
         FaultStatusCode((bits & 0x3f) as u8)
     }
 
-    const fn into_bits(self) -> u32 {
+    pub const fn into_bits(self) -> u32 {
         self.0 as u32
     }
+
+    pub const fn is_translation_fault(self) -> bool {
+        matches!(
+            self,
+            FaultStatusCode::TRANSLATION_FAULT_LEVEL0
+            | FaultStatusCode::TRANSLATION_FAULT_LEVEL1
+            | FaultStatusCode::TRANSLATION_FAULT_LEVEL2
+            | FaultStatusCode::TRANSLATION_FAULT_LEVEL3
+            | FaultStatusCode::TRANSLATION_FAULT_LEVEL_NEG1
+        )
+    }
+
+    pub const fn is_permission_fault(self) -> bool {
+        matches!(
+            self,
+            FaultStatusCode::PERMISSION_FAULT_LEVEL0
+            | FaultStatusCode::PERMISSION_FAULT_LEVEL1
+            | FaultStatusCode::PERMISSION_FAULT_LEVEL2
+            | FaultStatusCode::PERMISSION_FAULT_LEVEL3
+        )
+    }
+
+    pub const fn is_address_size_fault(self) -> bool {
+        matches!(
+            self,
+            FaultStatusCode::ADDRESS_SIZE_FAULT_LEVEL0
+            | FaultStatusCode::ADDRESS_SIZE_FAULT_LEVEL1
+            | FaultStatusCode::ADDRESS_SIZE_FAULT_LEVEL2
+            | FaultStatusCode::ADDRESS_SIZE_FAULT_LEVEL3
+            | FaultStatusCode::ADDRESS_SIZE_FAULT_LEVEL_NEG1
+        )
+    }
+
+    pub const fn is_access_flag_fault(self) -> bool {
+        matches!(
+            self,
+            FaultStatusCode::ACCESS_FLAG_FAULT_LEVEL0
+            | FaultStatusCode::ACCESS_FLAG_FAULT_LEVEL1
+            | FaultStatusCode::ACCESS_FLAG_FAULT_LEVEL2
+            | FaultStatusCode::ACCESS_FLAG_FAULT_LEVEL3
+        )
+    }
+
+    pub const fn is_granule_protection_fault(self) -> bool {
+        matches!(
+            self,
+            FaultStatusCode::GRANULE_PROTECTION_FAULT_LEVEL_NEG
+            | FaultStatusCode::GRANULE_PROTECTION_FAULT_LEVEL0
+            | FaultStatusCode::GRANULE_PROTECTION_FAULT_LEVEL1
+            | FaultStatusCode::GRANULE_PROTECTION_FAULT_LEVEL2
+            | FaultStatusCode::GRANULE_PROTECTION_FAULT_LEVEL3
+        )
+    }
+
+    pub const fn is_synchronous_external_abort(self) -> bool {
+        matches!(
+            self,
+            FaultStatusCode::SYNCHRONOUS_EXTERNAL_ABORT
+            | FaultStatusCode::SEA_TTW_LEVEL_NEG1
+            | FaultStatusCode::SEA_TTW_LEVEL0
+            | FaultStatusCode::SEA_TTW_LEVEL1
+            | FaultStatusCode::SEA_TTW_LEVEL2
+            | FaultStatusCode::SEA_TTW_LEVEL3
+        )
+    }
+
+    pub const fn is_ecc_parity_fault(self) -> bool {
+        matches!(
+            self,
+            FaultStatusCode::ECC_PARITY
+            | FaultStatusCode::ECC_PARITY_TTW_LEVEL_NEG1
+            | FaultStatusCode::ECC_PARITY_TTW_LEVEL0
+            | FaultStatusCode::ECC_PARITY_TTW_LEVEL1
+            | FaultStatusCode::ECC_PARITY_TTW_LEVEL2
+            | FaultStatusCode::ECC_PARITY_TTW_LEVEL3
+        )
+    }
+
 }
 
 #[bitfield(u32)]

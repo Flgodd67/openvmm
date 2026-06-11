@@ -19,6 +19,7 @@ use crate::processor::InterceptMessageState;
 use aarch64defs::EsrEl2;
 use aarch64defs::HpfarEl2;
 use aarch64defs::IssDataAbort;
+use aarch64defs::IssInstructionAbort;
 use aarch64defs::SystemReg;
 use aarch64defs::rsi::cca_rsi_plane_exit;
 use hcl::GuestVtl;
@@ -350,10 +351,33 @@ impl BackingPrivate for CcaBacked {
                             this.runner.cca_rsi_plane_entry().pc += 4; // Advance PC
                         }
                         ExceptionClass::InstructionAbort => {
+                            let iss = IssInstructionAbort::from_bits(esr_el2.iss());
+                            let ifsc = iss.ifsc();
+                            if iss.fnv() {
+                                tracing::warn!("CCA InstructionAbort: FAR_EL2 is not valid");
+                                return Err(dev.fatal_error(CcaUnsupportedExit::ExitReason(0).into()));
+                            }
+
                             // Handle instruction abort
                             let far = cca_exit.far_el2();
                             let hpfar = cca_exit.hpfar_el2();
                             let fipa = (hpfar.fipa() << 12) | (far & 0xfff);
+
+                            if ifsc.is_translation_fault() {
+                                tracing::warn!("CCA InstructionAbort: translation fault, fipa={:#x}", fipa);
+                            } else if ifsc.is_permission_fault() {
+                                tracing::warn!("CCA InstructionAbort: permission fault, fipa={:#x}", fipa);
+                            } else if ifsc.is_granule_protection_fault() {
+                                tracing::warn!("CCA InstructionAbort: granule protection fault, fipa={:#x}", fipa);
+                            } else if ifsc.is_synchronous_external_abort() {
+                                tracing::warn!("CCA InstructionAbort: synchronous external abort, fipa={:#x}", fipa);
+                            } else {
+                                tracing::warn!(
+                                    "CCA InstructionAbort: unsupported IFSC={:#x}, fipa={:#x}",
+                                    ifsc.into_bits(),
+                                    fipa
+                                );
+                            }
 
                             // 1) fetch was from outside PAR
                             // let memory_layout = &this.partition.lower_vtl_memory_layout;
