@@ -63,6 +63,7 @@ unsafe extern "C" {
 }
 
 #[tmk_test]
+#[should_panic]
 fn instruction_abort_permissions_enabled(_: TestContext<'_>) {
     log!("instruction_abort_permissions_enabled");
 
