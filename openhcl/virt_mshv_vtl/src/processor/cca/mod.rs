@@ -54,6 +54,20 @@ enum CcaUnsupportedExit {
     InvalidDataAbortIss(u64),
 }
 
+#[derive(Debug, Error)]
+enum CcaInstructionAbortError {
+    #[error("CCA InstructionAbort: translation fault, fipa={:#x}", fipa)]
+    TranslationFault{ fipa: u64 },
+    #[error("CCA InstructionAbort: permission fault, fipa={:#x}", fipa)]
+    PermissionEnabled{ fipa: u64 },
+    #[error("CCA InstructionAbort: granule protection fault, fipa={:#x}", fipa)]
+    GranuleProtectionFault{ fipa: u64 },
+    #[error("CCA InstructionAbort: synchronous external abort, fipa={:#x}", fipa)]
+    SynchronousExternalAbort{ fipa: u64 },
+    #[error("CCA InstructionAbort: unsupported IFSC={:#x}, fipa={:#x}", ifsc, fipa)]
+    UnsupportedIfsc{ ifsc: u32, fipa: u64 },
+}
+
 const AARCH64_ZERO_REGISTER_INDEX: u8 = 31;
 
 // For use with Hyper-V synthetic interrupt controller allocated by paravisor.
@@ -365,18 +379,38 @@ impl BackingPrivate for CcaBacked {
 
                             if ifsc.is_translation_fault() {
                                 tracing::warn!("CCA InstructionAbort: translation fault, fipa={:#x}", fipa);
+                                return Err(dev.fatal_error(
+                                    CcaInstructionAbortError::TranslationFault{fipa}
+                                        .into(),
+                                ));
                             } else if ifsc.is_permission_fault() {
                                 tracing::warn!("CCA InstructionAbort: permission fault, fipa={:#x}", fipa);
+                                return Err(dev.fatal_error(
+                                    CcaInstructionAbortError::PermissionEnabled{fipa}
+                                        .into(),
+                                ));
                             } else if ifsc.is_granule_protection_fault() {
                                 tracing::warn!("CCA InstructionAbort: granule protection fault, fipa={:#x}", fipa);
+                                return Err(dev.fatal_error(
+                                    CcaInstructionAbortError::GranuleProtectionFault{fipa}
+                                        .into(),
+                                ));
                             } else if ifsc.is_synchronous_external_abort() {
                                 tracing::warn!("CCA InstructionAbort: synchronous external abort, fipa={:#x}", fipa);
+                                return Err(dev.fatal_error(
+                                    CcaInstructionAbortError::SynchronousExternalAbort{fipa}
+                                        .into(),
+                                ));
                             } else {
                                 tracing::warn!(
                                     "CCA InstructionAbort: unsupported IFSC={:#x}, fipa={:#x}",
                                     ifsc.into_bits(),
                                     fipa
                                 );
+                                return Err(dev.fatal_error(
+                                    CcaInstructionAbortError::UnsupportedIfsc{ifsc: ifsc.into_bits(), fipa}
+                                        .into(),
+                                ));
                             }
 
                             // 1) fetch was from outside PAR
@@ -407,7 +441,7 @@ impl BackingPrivate for CcaBacked {
                             // 3) check whether address is in 'empty' memory - RIPAS_EMPTY
                             // need to add an ioctl and then use function rsi_ipa_state_get()
                             let mut plane_state = mshv_rsi_get_ipa_state{ fipa, state: u64::MAX};
-                            this.ipa_state_read(GuestVtl::Vtl0, &mut plane_state).map_err(|_| Error::Hcl);
+                            let _ = this.ipa_state_read(GuestVtl::Vtl0, &mut plane_state).map_err(|_| Error::Hcl);
 
                             if plane_state.state == 0 {
                                 println!("state is RIPAS_EMPTY");
@@ -423,7 +457,7 @@ impl BackingPrivate for CcaBacked {
 
                             if let Some(cvm) = backing_shared.cvm_state() {
                                 if cvm.isolated_memory_protector.check_vtl0_permissons_enabled(GuestVtl::Vtl0, far)
-                                    .map_err(|err| VpHaltReason::TripleFault { vtl: hvdef::Vtl::Vtl0 })? {
+                                    .map_err(|_err| VpHaltReason::TripleFault { vtl: hvdef::Vtl::Vtl0 })? {
                                     // will check whether its user executable or kernel executable or neither
                                 }
                             }
