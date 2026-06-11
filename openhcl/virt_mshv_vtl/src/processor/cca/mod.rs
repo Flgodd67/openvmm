@@ -17,6 +17,7 @@ use crate::UhCvmVpState;
 use crate::UhPartitionInner;
 use crate::processor::InterceptMessageState;
 use aarch64defs::EsrEl2;
+use aarch64defs::FaultStatusCode;
 use aarch64defs::HpfarEl2;
 use aarch64defs::IssDataAbort;
 use aarch64defs::IssInstructionAbort;
@@ -52,23 +53,116 @@ enum CcaUnsupportedExit {
     ExceptionClass { exception_class: u8, esr_el2: u64 },
     #[error("CCA data abort with invalid instruction syndrome in ESR_EL2 {0:#x}")]
     InvalidDataAbortIss(u64),
-}
-
-#[derive(Debug, Error)]
-enum CcaInstructionAbortError {
-    #[error("CCA InstructionAbort: translation fault, fipa={:#x}", fipa)]
-    TranslationFault{ fipa: u64 },
-    #[error("CCA InstructionAbort: permission fault, fipa={:#x}", fipa)]
-    PermissionEnabled{ fipa: u64 },
-    #[error("CCA InstructionAbort: granule protection fault, fipa={:#x}", fipa)]
-    GranuleProtectionFault{ fipa: u64 },
-    #[error("CCA InstructionAbort: synchronous external abort, fipa={:#x}", fipa)]
-    SynchronousExternalAbort{ fipa: u64 },
-    #[error("CCA InstructionAbort: unsupported IFSC={:#x}, fipa={:#x}", ifsc, fipa)]
-    UnsupportedIfsc{ ifsc: u32, fipa: u64 },
+    #[error(
+        "CCA instruction abort: ESR_EL2 {esr_el2:#x}, ELR_EL2 {elr_el2:#x}, FAR_EL2 {far_el2:#x},
+        FIPA {fipa:#x}, FIPA RIPAS state {fipa_state:#x}, IFSC {ifsc:#x}, reason {reason:?}, FNV {far_not_valid}"
+    )]
+    InstructionAbort {
+        esr_el2: u64,
+        elr_el2: u64,
+        far_el2: u64,
+        fipa: u64,
+        fipa_state: u8,
+        ifsc: u8,
+        reason: InstructionAbortReason,
+        far_not_valid: bool,
+    },
 }
 
 const AARCH64_ZERO_REGISTER_INDEX: u8 = 31;
+
+#[derive(Debug, Clone, Copy)]
+enum InstructionAbortReason {
+    AddressSizeFaultLevel0,
+    AddressSizeFaultLevel1,
+    AddressSizeFaultLevel2,
+    AddressSizeFaultLevel3,
+    TranslationFaultLevel0,
+    TranslationFaultLevel1,
+    TranslationFaultLevel2,
+    TranslationFaultLevel3,
+    AccessFlagFaultLevel0,
+    AccessFlagFaultLevel1,
+    AccessFlagFaultLevel2,
+    AccessFlagFaultLevel3,
+    PermissionFaultLevel0,
+    PermissionFaultLevel1,
+    PermissionFaultLevel2,
+    PermissionFaultLevel3,
+    SynchronousExternalAbort,
+    SyncTagCheckFault,
+    SynchronousExternalAbortOnTableWalkLevelNeg1,
+    SynchronousExternalAbortOnTableWalkLevel0,
+    SynchronousExternalAbortOnTableWalkLevel1,
+    SynchronousExternalAbortOnTableWalkLevel2,
+    SynchronousExternalAbortOnTableWalkLevel3,
+    EccParity,
+    EccParityOnTableWalkLevelNeg1,
+    EccParityOnTableWalkLevel0,
+    EccParityOnTableWalkLevel1,
+    EccParityOnTableWalkLevel2,
+    EccParityOnTableWalkLevel3,
+    GranuleProtectionFaultLevelNeg1,
+    GranuleProtectionFaultLevel0,
+    GranuleProtectionFaultLevel1,
+    GranuleProtectionFaultLevel2,
+    GranuleProtectionFaultLevel3,
+    AddressSizeFaultLevelNeg1,
+    TranslationFaultLevelNeg1,
+    TlbConflictAbort,
+    UnsupportedHardwareUpdateFault,
+    Unknown,
+}
+
+impl From<FaultStatusCode> for InstructionAbortReason {
+    fn from(value: FaultStatusCode) -> Self {
+        match value {
+            FaultStatusCode::ADDRESS_SIZE_FAULT_LEVEL0 => Self::AddressSizeFaultLevel0,
+            FaultStatusCode::ADDRESS_SIZE_FAULT_LEVEL1 => Self::AddressSizeFaultLevel1,
+            FaultStatusCode::ADDRESS_SIZE_FAULT_LEVEL2 => Self::AddressSizeFaultLevel2,
+            FaultStatusCode::ADDRESS_SIZE_FAULT_LEVEL3 => Self::AddressSizeFaultLevel3,
+            FaultStatusCode::TRANSLATION_FAULT_LEVEL0 => Self::TranslationFaultLevel0,
+            FaultStatusCode::TRANSLATION_FAULT_LEVEL1 => Self::TranslationFaultLevel1,
+            FaultStatusCode::TRANSLATION_FAULT_LEVEL2 => Self::TranslationFaultLevel2,
+            FaultStatusCode::TRANSLATION_FAULT_LEVEL3 => Self::TranslationFaultLevel3,
+            FaultStatusCode::ACCESS_FLAG_FAULT_LEVEL0 => Self::AccessFlagFaultLevel0,
+            FaultStatusCode::ACCESS_FLAG_FAULT_LEVEL1 => Self::AccessFlagFaultLevel1,
+            FaultStatusCode::ACCESS_FLAG_FAULT_LEVEL2 => Self::AccessFlagFaultLevel2,
+            FaultStatusCode::ACCESS_FLAG_FAULT_LEVEL3 => Self::AccessFlagFaultLevel3,
+            FaultStatusCode::PERMISSION_FAULT_LEVEL0 => Self::PermissionFaultLevel0,
+            FaultStatusCode::PERMISSION_FAULT_LEVEL1 => Self::PermissionFaultLevel1,
+            FaultStatusCode::PERMISSION_FAULT_LEVEL2 => Self::PermissionFaultLevel2,
+            FaultStatusCode::PERMISSION_FAULT_LEVEL3 => Self::PermissionFaultLevel3,
+            FaultStatusCode::SYNCHRONOUS_EXTERNAL_ABORT => Self::SynchronousExternalAbort,
+            FaultStatusCode::SYNC_TAG_CHECK_FAULT => Self::SyncTagCheckFault,
+            FaultStatusCode::SEA_TTW_LEVEL_NEG1 => {
+                Self::SynchronousExternalAbortOnTableWalkLevelNeg1
+            }
+            FaultStatusCode::SEA_TTW_LEVEL0 => Self::SynchronousExternalAbortOnTableWalkLevel0,
+            FaultStatusCode::SEA_TTW_LEVEL1 => Self::SynchronousExternalAbortOnTableWalkLevel1,
+            FaultStatusCode::SEA_TTW_LEVEL2 => Self::SynchronousExternalAbortOnTableWalkLevel2,
+            FaultStatusCode::SEA_TTW_LEVEL3 => Self::SynchronousExternalAbortOnTableWalkLevel3,
+            FaultStatusCode::ECC_PARITY => Self::EccParity,
+            FaultStatusCode::ECC_PARITY_TTW_LEVEL_NEG1 => Self::EccParityOnTableWalkLevelNeg1,
+            FaultStatusCode::ECC_PARITY_TTW_LEVEL0 => Self::EccParityOnTableWalkLevel0,
+            FaultStatusCode::ECC_PARITY_TTW_LEVEL1 => Self::EccParityOnTableWalkLevel1,
+            FaultStatusCode::ECC_PARITY_TTW_LEVEL2 => Self::EccParityOnTableWalkLevel2,
+            FaultStatusCode::ECC_PARITY_TTW_LEVEL3 => Self::EccParityOnTableWalkLevel3,
+            FaultStatusCode::GRANULE_PROTECTION_FAULT_LEVEL_NEG => {
+                Self::GranuleProtectionFaultLevelNeg1
+            }
+            FaultStatusCode::GRANULE_PROTECTION_FAULT_LEVEL0 => Self::GranuleProtectionFaultLevel0,
+            FaultStatusCode::GRANULE_PROTECTION_FAULT_LEVEL1 => Self::GranuleProtectionFaultLevel1,
+            FaultStatusCode::GRANULE_PROTECTION_FAULT_LEVEL2 => Self::GranuleProtectionFaultLevel2,
+            FaultStatusCode::GRANULE_PROTECTION_FAULT_LEVEL3 => Self::GranuleProtectionFaultLevel3,
+            FaultStatusCode::ADDRESS_SIZE_FAULT_LEVEL_NEG1 => Self::AddressSizeFaultLevelNeg1,
+            FaultStatusCode::TRANSLATION_FAULT_LEVEL_NEG1 => Self::TranslationFaultLevelNeg1,
+            FaultStatusCode::TLB_CONFLICT_ABORT => Self::TlbConflictAbort,
+            FaultStatusCode::UNSUPPORTED_HW_UPDATE_FAULT => Self::UnsupportedHardwareUpdateFault,
+            _ => Self::Unknown,
+        }
+    }
+}
 
 // For use with Hyper-V synthetic interrupt controller allocated by paravisor.
 enum UhDirectOverlay {
@@ -188,6 +282,10 @@ impl<'a> CcaExit<'a> {
 
     fn hpfar_el2(&self) -> HpfarEl2 {
         self.0.hpfar_el2.into()
+    }
+
+    fn elr_el2(&self) -> u64 {
+        self.0.elr_el2
     }
 
     fn gpr_or_zero_register(&self, index: u8) -> Option<u64> {
@@ -365,102 +463,46 @@ impl BackingPrivate for CcaBacked {
                             this.runner.cca_rsi_plane_entry().pc += 4; // Advance PC
                         }
                         ExceptionClass::InstructionAbort => {
+                            // Handle instruction abort
                             let iss = IssInstructionAbort::from_bits(esr_el2.iss());
-                            let ifsc = iss.ifsc();
+
                             if iss.fnv() {
                                 tracing::warn!("CCA InstructionAbort: FAR_EL2 is not valid");
                                 return Err(dev.fatal_error(CcaUnsupportedExit::ExitReason(0).into()));
                             }
 
-                            // Handle instruction abort
                             let far = cca_exit.far_el2();
                             let hpfar = cca_exit.hpfar_el2();
                             let fipa = (hpfar.fipa() << 12) | (far & 0xfff);
-
-                            if ifsc.is_translation_fault() {
-                                tracing::warn!("CCA InstructionAbort: translation fault, fipa={:#x}", fipa);
-                                return Err(dev.fatal_error(
-                                    CcaInstructionAbortError::TranslationFault{fipa}
-                                        .into(),
-                                ));
-                            } else if ifsc.is_permission_fault() {
-                                tracing::warn!("CCA InstructionAbort: permission fault, fipa={:#x}", fipa);
-                                return Err(dev.fatal_error(
-                                    CcaInstructionAbortError::PermissionEnabled{fipa}
-                                        .into(),
-                                ));
-                            } else if ifsc.is_granule_protection_fault() {
-                                tracing::warn!("CCA InstructionAbort: granule protection fault, fipa={:#x}", fipa);
-                                return Err(dev.fatal_error(
-                                    CcaInstructionAbortError::GranuleProtectionFault{fipa}
-                                        .into(),
-                                ));
-                            } else if ifsc.is_synchronous_external_abort() {
-                                tracing::warn!("CCA InstructionAbort: synchronous external abort, fipa={:#x}", fipa);
-                                return Err(dev.fatal_error(
-                                    CcaInstructionAbortError::SynchronousExternalAbort{fipa}
-                                        .into(),
-                                ));
-                            } else {
-                                tracing::warn!(
-                                    "CCA InstructionAbort: unsupported IFSC={:#x}, fipa={:#x}",
-                                    ifsc.into_bits(),
-                                    fipa
-                                );
-                                return Err(dev.fatal_error(
-                                    CcaInstructionAbortError::UnsupportedIfsc{ifsc: ifsc.into_bits(), fipa}
-                                        .into(),
-                                ));
-                            }
-
-                            // 1) fetch was from outside PAR
-                            // let memory_layout = &this.partition.lower_vtl_memory_layout;
-                            // let memory_range = &memory_layout.ram()[0].range;
-                            let realm_config = match this.partition.hcl.get_realm_config() {
-                                Ok(config) => config,
-                                Err(_) => {
-                                    return Ok(());
-                                }
-                            };
-                            let ipa_width = realm_config.ipa_width();
-                            let par_start = 0u64;
-                            let par_end = (1u64 << ipa_width) as u64;
-                            println!("FIPA: {}", fipa);
-                            if fipa >= par_end || fipa < par_start {
-
-                                tracing::warn!(
-                                    "CCA InstructionAbort: fetch was outside of PAR"
-                                );
-                                return Err(dev.fatal_error(CcaUnsupportedExit::ExitReason(0).into()));
-
-                            }
-
-                            // 2a) check whether there is a permission fault, with the memory being RIPAS_DEV
-                            // arm64_is_protected_mmio function in kernel - need to create ioctl to call
-                            // or just use the functions I created rsi_get_ipa_state
-                            // 3) check whether address is in 'empty' memory - RIPAS_EMPTY
-                            // need to add an ioctl and then use function rsi_ipa_state_get()
                             let mut plane_state = mshv_rsi_get_ipa_state{ fipa, state: u64::MAX};
                             let _ = this.ipa_state_read(GuestVtl::Vtl0, &mut plane_state).map_err(|_| Error::Hcl);
 
-                            if plane_state.state == 0 {
-                                println!("state is RIPAS_EMPTY");
-                            }
-
-                            if plane_state.state == 3 {
-                                println!("state is RIPAS_DEV");
-                            }
-
-                            // 2b) for checking permissions
-                            let backing_shared = &this.partition.backing_shared;
-                            // let cvm_state = backing_shared.cvm_state();
-
-                            if let Some(cvm) = backing_shared.cvm_state() {
-                                if cvm.isolated_memory_protector.check_vtl0_permissons_enabled(GuestVtl::Vtl0, far)
-                                    .map_err(|_err| VpHaltReason::TripleFault { vtl: hvdef::Vtl::Vtl0 })? {
-                                    // will check whether its user executable or kernel executable or neither
+                            // let iss = IssInstructionAbort::from(esr_el2.iss());
+                            let reason = InstructionAbortReason::from(iss.ifsc());
+                            tracing::warn!(
+                                esr_el2 = cca_exit.0.esr_el2,
+                                elr_el2 = cca_exit.elr_el2(),
+                                far_el2 = cca_exit.far_el2(),
+                                fipa = fipa,
+                                fipa_state = plane_state.state as u8,
+                                ifsc = iss.ifsc().0,
+                                ?reason,
+                                far_not_valid = iss.fnv(),
+                                "CCA instruction abort"
+                            );
+                            return Err(dev.fatal_error(
+                                CcaUnsupportedExit::InstructionAbort {
+                                    esr_el2: cca_exit.0.esr_el2,
+                                    elr_el2: cca_exit.elr_el2(),
+                                    far_el2: cca_exit.far_el2(),
+                                    fipa: fipa,
+                                    fipa_state: plane_state.state as u8,
+                                    ifsc: iss.ifsc().0,
+                                    reason,
+                                    far_not_valid: iss.fnv(),
                                 }
-                            }
+                                .into(),
+                            ));
 
                         }
                         ExceptionClass::SimdAccess => {
