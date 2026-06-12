@@ -477,7 +477,6 @@ impl BackingPrivate for CcaBacked {
                             let mut plane_state = mshv_rsi_get_ipa_state{ fipa, state: u64::MAX};
                             let _ = this.ipa_state_read(GuestVtl::Vtl0, &mut plane_state).map_err(|_| Error::Hcl);
 
-                            // let iss = IssInstructionAbort::from(esr_el2.iss());
                             let reason = InstructionAbortReason::from(iss.ifsc());
                             tracing::warn!(
                                 esr_el2 = cca_exit.0.esr_el2,

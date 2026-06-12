@@ -6,8 +6,8 @@
 use crate::prelude::*;
 
 core::arch::global_asm! {
-    ".global instruction_abort_outside_par_trampoline",
-    "instruction_abort_outside_par_trampoline:",
+    ".global instruction_abort_outside_par_entry",
+    "instruction_abort_outside_par_entry:",
     "movz x16, #0x0000",
     "movk x16, #0x0000, lsl #16",
     "movk x16, #0xffff, lsl #32",
@@ -16,58 +16,55 @@ core::arch::global_asm! {
 }
 
 unsafe extern "C" {
-    fn instruction_abort_outside_par_trampoline() -> !;
+    fn instruction_abort_outside_par_entry() -> !;
 }
 
-#[tmk_test]
+#[tmk_test(expected_failure)]
 fn instruction_abort_outside_par(_: TestContext<'_>) {
     log!("instruction_abort_outside_par");
 
     unsafe {
-        instruction_abort_outside_par_trampoline();
+        instruction_abort_outside_par_entry();
     }
-
-    // panic!("branch to outside PAR unexpectedly returned");
 }
 
 core::arch::global_asm! {
-    ".global instruction_abort_ripas_empty_a",
-    "instruction_abort_ripas_empty_a:",
+    ".global instruction_abort_ripas_empty_entry",
+    "instruction_abort_ripas_empty_entry:",
     "movz x16, #0x0000",
     "br x16",
 }
 
 unsafe extern "C" {
-    fn instruction_abort_ripas_empty_a() -> !;
+    fn instruction_abort_ripas_empty_entry() -> !;
 }
 
-#[tmk_test]
+#[tmk_test(expected_failure)]
 fn instruction_abort_ripas_empty(_: TestContext<'_>) {
     log!("instruction_abort_ripas_empty");
 
     unsafe {
-        instruction_abort_ripas_empty_a();
+        instruction_abort_ripas_empty_entry();
     }
 }
 
 core::arch::global_asm! {
-    ".global instruction_abort_permissions_enabled_a",
-    "instruction_abort_permissions_enabled_a:",
+    ".global instruction_abort_permissions_enabled_entry",
+    "instruction_abort_permissions_enabled_entry:",
     "movz x16, #0xf000",
     "movk x16, #0x847f, lsl #16",
     "br x16",
 }
 
 unsafe extern "C" {
-    fn instruction_abort_permissions_enabled_a() -> !;
+    fn instruction_abort_permissions_enabled_entry() -> !;
 }
 
-#[tmk_test]
-#[should_panic]
+#[tmk_test(expected_failure)]
 fn instruction_abort_permissions_enabled(_: TestContext<'_>) {
     log!("instruction_abort_permissions_enabled");
 
     unsafe {
-        instruction_abort_permissions_enabled_a();
+        instruction_abort_permissions_enabled_entry();
     }
 }
