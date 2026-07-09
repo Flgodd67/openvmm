@@ -6,6 +6,37 @@
 #![cfg(target_arch = "aarch64")]
 
 use super::Scope;
+use crate::log;
+
+use core::sync::atomic::AtomicBool;
+use core::sync::atomic::Ordering::Relaxed;
+
+const GIC_DISTRIBUTOR_BASE: usize = tmk_protocol::aarch64::GIC_DISTRIBUTOR_BASE as usize;
+const GIC_REDISTRIBUTOR_BASE: usize = tmk_protocol::aarch64::GIC_REDISTRIBUTOR_BASE as usize;
+const GIC_REDISTRIBUTOR_SGI_BASE: usize = GIC_REDISTRIBUTOR_BASE + 0x1_0000;
+
+const GICD_CTLR: usize = GIC_DISTRIBUTOR_BASE;
+const GICR_WAKER: usize = GIC_REDISTRIBUTOR_BASE + 0x14;
+const GICR_IGROUPR0: usize = GIC_REDISTRIBUTOR_SGI_BASE + 0x80;
+const GICR_ISENABLER0: usize = GIC_REDISTRIBUTOR_SGI_BASE + 0x100;
+const GICR_ICENABLER0: usize = GIC_REDISTRIBUTOR_SGI_BASE + 0x180;
+const GICR_IPRIORITYR0: usize = GIC_REDISTRIBUTOR_SGI_BASE + 0x400;
+
+const GIC_SPECIAL_INTID: u32 = 1020;
+const DAIF_IRQ_MASK: u64 = 1 << 7;
+const GICD_CTLR_ENABLE_GRP1_AND_ARE: u32 = (1 << 1) | (1 << 4);
+
+/// GIC interrupt ID used by the architectural virtual timer.
+pub const VIRTUAL_TIMER_PPI: u32 = tmk_protocol::aarch64::VIRTUAL_TIMER_PPI;
+
+static ARCH_INITIALIZED: AtomicBool = AtomicBool::new(false);
+static mut IRQ_HANDLER: [usize; 2] = [0; 2];
+
+/// A context passed to the IRQ handler.
+pub struct IrqContext {
+    /// The GIC interrupt ID being handled.
+    pub intid: u32,
+}
 
 #[cfg(minimal_rt)]
 mod entry {
@@ -46,11 +77,440 @@ mod entry {
     static mut STACK: Stack = Stack([0; STACK_SIZE]);
 }
 
-pub(super) struct ArchScopeState;
+core::arch::global_asm! {
+    ".balign 2048",
+    ".globl {exception_vectors}",
+    "{exception_vectors}:",
+    "b unexpected_exception",
+    ".org {exception_vectors} + 0x080",
+    "b irq_exception",
+    ".org {exception_vectors} + 0x100",
+    "b unexpected_exception",
+    ".org {exception_vectors} + 0x180",
+    "b unexpected_exception",
+    ".org {exception_vectors} + 0x200",
+    "b unexpected_exception",
+    ".org {exception_vectors} + 0x280",
+    "b irq_exception",
+    ".org {exception_vectors} + 0x300",
+    "b unexpected_exception",
+    ".org {exception_vectors} + 0x380",
+    "b unexpected_exception",
+    ".org {exception_vectors} + 0x400",
+    "b unexpected_exception",
+    ".org {exception_vectors} + 0x480",
+    "b irq_exception",
+    ".org {exception_vectors} + 0x500",
+    "b unexpected_exception",
+    ".org {exception_vectors} + 0x580",
+    "b unexpected_exception",
+    ".org {exception_vectors} + 0x600",
+    "b unexpected_exception",
+    ".org {exception_vectors} + 0x680",
+    "b irq_exception",
+    ".org {exception_vectors} + 0x700",
+    "b unexpected_exception",
+    ".org {exception_vectors} + 0x780",
+    "b unexpected_exception",
 
-impl Scope<'_, '_> {
-    pub(super) fn arch_init() -> ArchScopeState {
-        ArchScopeState
+    "irq_exception:",
+    "sub sp, sp, #256",
+    "stp x0, x1, [sp, #0]",
+    "stp x2, x3, [sp, #16]",
+    "stp x4, x5, [sp, #32]",
+    "stp x6, x7, [sp, #48]",
+    "stp x8, x9, [sp, #64]",
+    "stp x10, x11, [sp, #80]",
+    "stp x12, x13, [sp, #96]",
+    "stp x14, x15, [sp, #112]",
+    "stp x16, x17, [sp, #128]",
+    "stp x18, x19, [sp, #144]",
+    "stp x20, x21, [sp, #160]",
+    "stp x22, x23, [sp, #176]",
+    "stp x24, x25, [sp, #192]",
+    "stp x26, x27, [sp, #208]",
+    "stp x28, x29, [sp, #224]",
+    "str x30, [sp, #240]",
+    "bl {irq_handler}",
+    "ldr x30, [sp, #240]",
+    "ldp x28, x29, [sp, #224]",
+    "ldp x26, x27, [sp, #208]",
+    "ldp x24, x25, [sp, #192]",
+    "ldp x22, x23, [sp, #176]",
+    "ldp x20, x21, [sp, #160]",
+    "ldp x18, x19, [sp, #144]",
+    "ldp x16, x17, [sp, #128]",
+    "ldp x14, x15, [sp, #112]",
+    "ldp x12, x13, [sp, #96]",
+    "ldp x10, x11, [sp, #80]",
+    "ldp x8, x9, [sp, #64]",
+    "ldp x6, x7, [sp, #48]",
+    "ldp x4, x5, [sp, #32]",
+    "ldp x2, x3, [sp, #16]",
+    "ldp x0, x1, [sp, #0]",
+    "add sp, sp, #256",
+    "eret",
+
+    "unexpected_exception:",
+    "b {unexpected_exception_handler}",
+    exception_vectors = sym EXCEPTION_VECTORS,
+    irq_handler = sym irq_handler,
+    unexpected_exception_handler = sym unexpected_exception_handler,
+}
+
+unsafe extern "C" {
+    safe static EXCEPTION_VECTORS: u8;
+}
+
+pub(super) struct ArchScopeState {
+    old_irq_handler: Option<[usize; 2]>,
+    interrupt_state: bool,
+}
+
+impl<'scope> Scope<'scope, '_> {
+     pub(super) fn arch_init() -> ArchScopeState {
+        arch_init_once();
+        ArchScopeState {
+            old_irq_handler: None,
+            interrupt_state: are_interrupts_enabled(),
+        }
     }
-    pub(super) fn arch_reset(&mut self) {}
+
+    pub(super) fn arch_reset(&mut self) {
+        if let Some(handler) = self.arch.old_irq_handler.take() {
+            let _disable = disable_guarded();
+            // SAFETY: IRQ_HANDLER is not concurrently accessed while IRQs are disabled.
+            unsafe { IRQ_HANDLER = handler };
+        }
+        if self.arch.interrupt_state {
+            enable_interrupts();
+        } else {
+            disable_interrupts();
+        }
+    }
+
+    fn save_irq_handler(&mut self) {
+        if self.arch.old_irq_handler.is_some() {
+            return;
+        }
+        let _disable = disable_guarded();
+        // SAFETY: IRQ_HANDLER is not concurrently modified while IRQs are disabled.
+        self.arch.old_irq_handler = Some(unsafe { IRQ_HANDLER });
+    }
+
+    /// Sets the IRQ handler.
+    ///
+    /// This is reverted when the scope ends.
+    pub fn set_irq_handler(&mut self, handler: &'scope (dyn Send + Fn(&mut IrqContext))) {
+        self.save_irq_handler();
+        let _disable = disable_guarded();
+        // SAFETY: IRQ_HANDLER is not concurrently modified while IRQs are disabled.
+        unsafe {
+            IRQ_HANDLER = core::mem::transmute::<&dyn Fn(&mut IrqContext), [usize; 2]>(handler)
+        };
+    }
+
+    /// Enables a GIC SGI/PPI interrupt for the current VP.
+    pub fn enable_gic_irq(&self, intid: u32) {
+        assert!(intid < 32, "only SGI/PPI interrupts are supported");
+        enable_gic_for_current_vp();
+        write_reg32(GICR_IGROUPR0, read_reg32(GICR_IGROUPR0) | (1 << intid));
+
+        let priority_address = GICR_IPRIORITYR0 + (intid as usize & !3);
+        let priority_shift = (intid & 3) * 8;
+        let priority = read_reg32(priority_address) & !(0xff << priority_shift);
+        write_reg32(priority_address, priority | (0x80 << priority_shift));
+        write_reg32(GICR_ISENABLER0, 1 << intid);
+        // memory_barrier();
+    }
+
+    /// Disables a GIC SGI/PPI interrupt for the current VP.
+    pub fn disable_gic_irq(&self, intid: u32) {
+        assert!(intid < 32, "only SGI/PPI interrupts are supported");
+        write_reg32(GICR_ICENABLER0, 1 << intid);
+        // memory_barrier();
+    }
+
+    /// Enables IRQ delivery.
+    ///
+    /// Reverts when the scope ends.
+    pub fn enable_interrupts(&self) {
+        enable_interrupts();
+    }
+
+    /// Disables IRQ delivery and returns true if it was previously enabled.
+    ///
+    /// Reverts when the scope ends.
+    pub fn disable_interrupts(&self) -> bool {
+        disable_interrupts()
+    }
+}
+
+/// Reads the virtual counter frequency.
+pub fn read_cntfrq() -> u64 {
+    let value;
+    // SAFETY: reading CNTFRQ_EL0 is side-effect free.
+    unsafe {
+        core::arch::asm!("mrs {value}, CNTFRQ_EL0", value = out(reg) value);
+    }
+    value
+}
+
+/// Reads the virtual counter.
+pub fn read_cntvct() -> u64 {
+    let value;
+    // SAFETY: reading CNTVCT_EL0 is side-effect free.
+    unsafe {
+        core::arch::asm!("isb; mrs {value}, CNTVCT_EL0", value = out(reg) value);
+    }
+    value
+}
+
+/// Arms the virtual timer to fire at `count`.
+pub fn set_virtual_timer_compare(count: u64) {
+    // SAFETY: programming the virtual timer is expected in TMK tests.
+    unsafe {
+        core::arch::asm!(
+            "msr CNTV_CVAL_EL0, {count}",
+            "msr CNTV_CTL_EL0, {control}",
+            "isb",
+            count = in(reg) count,
+            control = in(reg) 1u64,
+        );
+    }
+}
+
+/// Disables the virtual timer.
+pub fn disable_virtual_timer() {
+    // SAFETY: programming the virtual timer is expected in TMK tests.
+    unsafe {
+        core::arch::asm!(
+            "msr CNTV_CTL_EL0, {control}",
+            "isb",
+            control = in(reg) 0u64,
+        );
+    }
+}
+
+/// Polls the emulated GIC while waiting for an interrupt.
+///
+/// This gives VMMs that emulate the GIC a regular exit on which to observe
+/// changes to interrupt sources that are managed outside the guest.
+pub fn poll_interrupts() {
+    let _ = read_reg32(GICD_CTLR);
+}
+
+#[cfg_attr(not(minimal_rt), expect(dead_code))]
+extern "C" fn irq_handler() {
+    let intid = read_icc_iar1();
+    if intid >= GIC_SPECIAL_INTID {
+        return;
+    }
+
+    let handler = {
+        // SAFETY: IRQ_HANDLER is changed only while IRQs are disabled.
+        let handler = unsafe { IRQ_HANDLER };
+        // SAFETY: this is the underlying type of the IRQ handler.
+        unsafe {
+            core::mem::transmute::<[usize; 2], Option<&(dyn Send + Fn(&mut IrqContext))>>(handler)
+        }
+    };
+
+    let Some(handler) = handler else {
+        panic!("unhandled IRQ {intid}");
+    };
+
+    handler(&mut IrqContext { intid });
+    write_icc_eoir1(intid);
+}
+
+#[cfg_attr(not(minimal_rt), expect(dead_code))]
+extern "C" fn unexpected_exception_handler() -> ! {
+    let esr: u64;
+    let elr: u64;
+    let far: u64;
+    // SAFETY: reading exception syndrome registers is side-effect free.
+    unsafe {
+        core::arch::asm!(
+            "mrs {esr}, ESR_EL1",
+            "mrs {elr}, ELR_EL1",
+            "mrs {far}, FAR_EL1",
+            esr = out(reg) esr,
+            elr = out(reg) elr,
+            far = out(reg) far,
+        );
+    }
+    panic!("unexpected exception: esr={esr:#x}, elr={elr:#x}, far={far:#x}");
+}
+
+fn arch_init_once() {
+    if ARCH_INITIALIZED.swap(true, Relaxed) {
+        return;
+    }
+
+    disable_interrupts();
+    // SAFETY: installing the EL1 exception vector is expected during TMK init.
+    unsafe {
+        core::arch::asm!(
+            "msr VBAR_EL1, {vectors}",
+            "isb",
+            vectors = in(reg) &EXCEPTION_VECTORS as *const u8 as u64,
+        );
+    }
+}
+
+fn enable_gic_for_current_vp() {
+    log!("GICD_CTLR 1: {}", read_reg32(GICD_CTLR));
+    write_reg32(GICD_CTLR, GICD_CTLR_ENABLE_GRP1_AND_ARE);
+    log!("GICD_CTLR 2: {}", read_reg32(GICD_CTLR));
+
+    let waker = read_reg32(GICR_WAKER) & !(1 << 1);
+    log!("waker: {}", waker);
+    write_reg32(GICR_WAKER, waker);
+    while read_reg32(GICR_WAKER) & (1 << 2) != 0 {
+        core::hint::spin_loop();
+    }
+    log!("After spin loop");
+
+    // SAFETY: programming the GIC CPU system-register interface is expected in TMK tests.
+    unsafe {
+        core::arch::asm!(
+            "msr ICC_SRE_EL1, {sre}",
+            "isb",
+            "msr ICC_PMR_EL1, {pmr}",
+            "msr ICC_IGRPEN1_EL1, {enable}",
+            "isb",
+            sre = in(reg) 1u64,
+            pmr = in(reg) 0xffu64,
+            enable = in(reg) 1u64,
+        );
+    }
+}
+
+fn read_icc_iar1() -> u32 {
+    let value: u64;
+    // SAFETY: reading ICC_IAR1_EL1 acknowledges the pending interrupt.
+    unsafe {
+        core::arch::asm!("mrs {value}, ICC_IAR1_EL1", value = out(reg) value);
+    }
+    value as u32
+}
+
+fn write_icc_eoir1(intid: u32) {
+    // SAFETY: writing ICC_EOIR1_EL1 completes handling of `intid`.
+    unsafe {
+        core::arch::asm!("msr ICC_EOIR1_EL1, {value}", value = in(reg) intid as u64);
+    }
+}
+
+fn read_reg32(address: usize) -> u32 {
+    // SAFETY: callers pass known GIC MMIO register addresses.
+    unsafe { (address as *const u32).read_volatile() }
+}
+
+fn write_reg32(address: usize, value: u32) {
+    // SAFETY: callers pass known GIC MMIO register addresses.
+    unsafe { (address as *mut u32).write_volatile(value) }
+}
+
+fn write_reg8(address: usize, value: u8) {
+    // SAFETY: callers pass known GIC MMIO register addresses.
+    unsafe { (address as *mut u8).write_volatile(value) }
+}
+
+#[must_use]
+struct DisableGuard(bool);
+
+fn disable_guarded() -> DisableGuard {
+    let interrupts_enabled = disable_interrupts();
+    DisableGuard(interrupts_enabled)
+}
+
+impl Drop for DisableGuard {
+    fn drop(&mut self) {
+        if self.0 {
+            enable_interrupts();
+        }
+    }
+}
+
+fn disable_interrupts() -> bool {
+    let enabled = are_interrupts_enabled();
+    if enabled {
+        // SAFETY: disabling IRQs is always memory safe.
+        unsafe {
+            core::arch::asm!("msr daifset, #2");
+        }
+    }
+    enabled
+}
+
+fn enable_interrupts() {
+    // SAFETY: caller ensures IRQ handlers are installed first.
+    unsafe {
+        core::arch::asm!("msr daifclr, #2; isb");
+    }
+}
+
+fn are_interrupts_enabled() -> bool {
+    let daif: u64;
+    // SAFETY: reading DAIF is side-effect free.
+    unsafe {
+        core::arch::asm!("mrs {daif}, DAIF", daif = out(reg) daif);
+    }
+    daif & DAIF_IRQ_MASK == 0
+}
+
+pub fn send_sgi_to_self(intid: u32) {
+    assert!(intid < 16, "SGI INTID must be in the range 0..16");
+
+    let mpidr = read_mpidr();
+
+    let aff0 = mpidr & 0xff;
+    let aff1 = (mpidr >> 8) & 0xff;
+    let aff2 = (mpidr >> 16) & 0xff;
+    let aff3 = (mpidr >> 32) & 0xff;
+
+    // ICC_SGI1R_EL1:
+    //
+    // Aff3       [55:48]
+    // RS         [47:44]
+    // IRM        [40]
+    // Aff2       [39:32]
+    // INTID      [27:24]
+    // Aff1       [23:16]
+    // TargetList [15:0]
+    //
+    // TargetList bit N targets the PE whose Aff0 is N.
+    assert!(aff0 < 16, "simple SGI target list only supports Aff0 < 16");
+
+    let value = (aff3 << 48)
+        | (aff2 << 32)
+        | (u64::from(intid) << 24)
+        | (aff1 << 16)
+        | (1u64 << aff0);
+
+    // SAFETY: The value encodes a Group 1 SGI targeting the current PE.
+    unsafe {
+        core::arch::asm!(
+            "msr ICC_SGI1R_EL1, {value}",
+            "isb",
+            value = in(reg) value,
+        );
+    }
+
+}
+
+fn read_mpidr() -> u64 {
+    let value: u64;
+
+    // SAFETY: Reading MPIDR_EL1 has no side effects.
+    unsafe {
+        core::arch::asm!(
+            "mrs {value}, MPIDR_EL1",
+            value = out(reg) value,
+        );
+    }
+
+    value
 }

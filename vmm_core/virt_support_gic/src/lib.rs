@@ -9,6 +9,13 @@
 pub use gicd::Distributor;
 pub use gicr::Redistributor;
 
+#[derive(Clone, Copy)]
+pub struct PendingInterrupt {
+    pub intid: u32,
+    pub priority: u8,
+    pub group1: bool,
+}
+
 mod gicd {
     use super::Redistributor;
     use super::gicr::SharedState;
@@ -24,6 +31,7 @@ mod gicd {
     use parking_lot::Mutex;
     use std::sync::Arc;
     use vm_topology::processor::VpIndex;
+    use super::PendingInterrupt;
 
     #[derive(Debug, Inspect)]
     pub struct Distributor {
@@ -426,6 +434,87 @@ mod gicd {
             true
         }
 
+        pub fn next_pending_interrupt(
+            &self,
+            vp: VpIndex,
+            running_priority: u8,
+        ) -> Option<PendingInterrupt> {
+            let private = self.next_private_interrupt(vp, running_priority);
+            let spi = self.next_spi_interrupt(vp, running_priority);
+
+            match (private, spi) {
+                (Some(a), Some(b)) if a.priority <= b.priority => Some(a),
+                (Some(_), Some(b)) => Some(b),
+                (Some(a), None) => Some(a),
+                (None, Some(b)) => Some(b),
+                (None, None) => None,
+            }
+        }
+
+        fn next_private_interrupt(&self,
+            vp: VpIndex,
+            running_priority: u8,
+        ) -> Option<PendingInterrupt> {
+            let gicr = self.gicr.get(vp.index() as usize)?;
+
+            gicr.next_private_interrupt(vp, running_priority)
+        }
+
+        fn next_spi_interrupt(&self,
+            vp: VpIndex,
+            running_priority: u8,
+        ) -> Option<PendingInterrupt> {
+
+            let n = (self.max_spi_intid + 1) as usize/32;
+            let state = self.state.lock();
+
+            let mut best: Option<PendingInterrupt> = None;
+
+            for i in 1..state.pending.len() {
+                let mut cand: u32 = state.pending[i] & state.enable[i] & !state.active[i] & state.group[i];
+                while cand != 0 {
+                    let bit = cand.trailing_zeros();
+                    cand &= cand - 1;
+
+                    let intid = i as u32 * 32 + bit;
+
+                    if intid > self.max_spi_intid {
+                        continue;
+                    }
+
+                    if !self.spi_targets_vp(&state, intid, vp) {
+                        continue;
+                    }
+
+                    let pdx =  intid / 4;
+                    let shift = (intid%4)*8;
+                    let priority_word = state.priority[pdx as usize];
+                    let priority = ((priority_word >> shift) & 0xff) as u8;
+
+                    if priority >= running_priority {
+                        continue;
+                    }
+
+                    let tmp = PendingInterrupt {
+                        intid,
+                        priority,
+                        group1: true,
+                    };
+
+                    match &best {
+                        Some(curr_best)
+                                    if curr_best.priority < tmp.priority
+                                    || (curr_best.priority == tmp.priority
+                                    && curr_best.intid < tmp.intid) => {}
+                        _ => best = Some(tmp)
+                    }
+                }
+            }
+
+            best
+
+        }
+
         fn read_gicd(&self, address: u64, data: &mut [u8]) {
             if address & (data.len() as u64 - 1) != 0 {
                 data.fill(!0);
@@ -493,6 +582,35 @@ mod gicd {
                 tracelimit::warn_ratelimited!(?address, ?data, "unsupported gicd register write");
             }
         }
+
+        fn spi_targets_vp(
+            &self,
+            state: &DistributorState,
+            intid: u32,
+            vp: VpIndex,
+        ) -> bool {
+            // let Some(&route_value) = state.route.get(intid as usize) else {
+            //     return false;
+            // };
+
+            // let Some(gicr) = self.gicr.get(vp.index() as usize) else {
+            //     return false;
+            // };
+
+            // let route = GicdIrouter::from(route_value);
+            // let mpidr = gicr.mpidr;
+
+            // if route.irm() {
+            //     // Simplest single-VP behaviour:
+            //     return vp.index() == 0;
+            // }
+
+            // route.aff0() == mpidr.aff0()
+            //     && route.aff1() == mpidr.aff1()
+            //     && route.aff2() == mpidr.aff2()
+            //     && route.aff3() == mpidr.aff3()
+            true
+        }
     }
 }
 
@@ -508,6 +626,8 @@ mod gicr {
     use std::sync::Arc;
     use std::sync::atomic::AtomicU32;
     use std::sync::atomic::Ordering;
+    use super::PendingInterrupt;
+    use vm_topology::processor::VpIndex;
 
     #[derive(Debug, Inspect)]
     pub struct Redistributor {
@@ -745,6 +865,50 @@ mod gicr {
             tracing::debug!(?address, data, "gicr sgi write32");
             true
         }
+
+        pub fn next_private_interrupt(&self,
+            vp: VpIndex,
+            running_priority: u8,
+        ) -> Option<PendingInterrupt> {
+
+            let pending  = self.pending.load(Ordering::Relaxed);
+            let state = self.mutable.lock();
+
+            let deliverable = pending & state.enable & !state.active & state.group;
+
+            let mut best: Option<PendingInterrupt> = None;
+
+            for intid in 0..32 {
+                let mask = 1u32 << intid;
+
+                if deliverable & mask == 0 {
+                    continue;
+                }
+
+                let priority_word = state.priority[(intid/4) as usize];
+                let shift = (intid%4) * 8;
+                let priority = ((priority_word >> shift) & 0xff) as u8;
+
+                if priority >= running_priority {
+                    continue;
+                }
+
+                let curr = PendingInterrupt{
+                    intid,
+                    priority,
+                    group1: true,
+                };
+
+                match &best {
+                    Some(curr_best) if curr_best.priority < curr.priority
+                                    || (curr_best.priority == curr.priority
+                                    && curr_best.intid < curr.intid) => {}
+                    _ => best = Some(curr),
+                }
+            }
+
+            best
+        }
     }
 
     impl Redistributor {
@@ -811,4 +975,141 @@ mod gicr {
             self.shared.mutable.lock().active &= !(1 << intid);
         }
     }
+}
+
+pub struct GicState {
+    pending: Vec<u32>,
+    enable: Vec<u32>,
+    active: Vec<u32>,
+    priority: Vec<u32>,
+}
+
+impl GicState {
+    fn new(num_interrupts: u32) -> Self {
+        let bitmap_words = num_interrupts.div_ceil(32) as usize;
+
+        Self {
+            pending: vec![0; bitmap_words],
+            enable: vec![0; bitmap_words],
+            active: vec![0; bitmap_words],
+
+            // One priority entry per interrupt.
+            priority: vec![0; num_interrupts as usize],
+        }
+    }
+}
+
+use anyhow::Context as _;
+use std::sync::Mutex;
+use memory_range::MemoryRange;
+use vm_topology::processor::ProcessorTopology;
+use vm_topology::processor::aarch64::GicVersion;
+use vm_topology::processor::VpIndex;
+use vm_topology::memory::MemoryLayout;
+use inspect::Inspect;
+use aarch64defs::SystemReg;
+
+#[derive(Inspect)]
+pub struct TmkGic {
+    distributor: Distributor,
+    #[inspect(skip)]
+    redistributors: Vec<Mutex<Redistributor>>,
+    distributor_range: MemoryRange,
+    redistributor_range: MemoryRange,
+
+    #[inspect(skip)]
+    state: Mutex<GicState>,
+}
+
+impl TmkGic {
+    pub fn new(topology: &ProcessorTopology) -> anyhow::Result<Self> {
+        let redistributors_base = match topology.gic_version() {
+            GicVersion::V3 {
+                redistributors_base,
+            } => redistributors_base,
+            GicVersion::V2 { .. } => anyhow::bail!("TMK software GIC requires GICv3"),
+        };
+        let redistributors_size = aarch64defs::GIC_REDISTRIBUTOR_SIZE
+            .checked_mul(u64::from(topology.vp_count()))
+            .context("GIC redistributor range overflowed")?;
+        let redistributors_end = redistributors_base
+            .checked_add(redistributors_size)
+            .context("GIC redistributor range overflowed")?;
+        let redistributor_range = MemoryRange::new(redistributors_base..redistributors_end);
+        let distributor_base = topology.gic_distributor_base();
+        let distributor_end = distributor_base
+            .checked_add(aarch64defs::GIC_DISTRIBUTOR_SIZE)
+            .context("GIC distributor range overflowed")?;
+        let distributor_range = MemoryRange::new(distributor_base..distributor_end);
+
+        let num_interrupts = topology.gic_nr_irqs();
+
+        let mut distributor = Distributor::new(
+            distributor_base,
+            redistributor_range,
+            num_interrupts,
+        );
+        let mut redistributors: Vec<Redistributor> = vec![];
+        let vp_count = topology.vp_count() as usize;
+        for (index, vp) in topology.vps_arch().enumerate() {
+            let gicr = distributor.add_redistributor(vp.mpidr.into(), index + 1 == vp_count);
+            redistributors.push(gicr);
+        }
+
+        let redistributors = redistributors
+                .into_iter()
+                .map(Mutex::new)
+                .collect();
+
+        Ok(Self {
+            distributor,
+            redistributors,
+            distributor_range,
+            redistributor_range,
+            state: Mutex::new(GicState::new(num_interrupts)),
+        })
+    }
+
+    pub fn contains(&self, address: u64) -> bool {
+        self.distributor_range.contains_addr(address)
+            || self.redistributor_range.contains_addr(address)
+    }
+
+    pub fn read(&self, address: u64, data: &mut [u8]) -> bool {
+        self.distributor.read(address, data)
+    }
+
+    pub fn write(&self, address: u64, data: &[u8]) -> bool {
+        self.distributor.write(address, data)
+    }
+
+    pub fn write_sysreg(
+            &self,
+            reg: SystemReg,
+            value: u64,
+            wake: impl FnMut(usize),
+    ) -> bool {
+        let vp_index = 0 as usize;
+
+        let mut gicr = self.redistributors[vp_index].lock().expect("redistributor mutex error");
+        self.distributor.write_sysreg(&mut gicr, reg, value, wake)
+    }
+
+    pub fn next_pending_interrupt(
+        &self,
+        vp: VpIndex,
+        running_priority: u8,
+    ) -> Option<PendingInterrupt> {
+        self.distributor.next_pending_interrupt(vp,running_priority)
+    }
+
+    pub fn raise_ppi(&self, vp: VpIndex, intid: u32) -> bool {
+        self.distributor.raise_ppi(vp, intid)
+    }
+
+    // fn acknowledge(&self, vp: VpIndex, intid: u32){
+    //     self.distributor.ack(gicr, group1)
+    // }
+
+    // fn end_of_interrupt(&self, vp: VpIndex, intid: u32);
 }

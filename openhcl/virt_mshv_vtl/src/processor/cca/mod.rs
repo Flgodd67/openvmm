@@ -21,6 +21,7 @@ use aarch64defs::HpfarEl2;
 use aarch64defs::InstructionAbortReason;
 use aarch64defs::IssDataAbort;
 use aarch64defs::IssInstructionAbort;
+use aarch64defs::IssSystem;
 use aarch64defs::SystemReg;
 use aarch64defs::rsi::cca_rsi_plane_exit;
 use hcl::GuestVtl;
@@ -33,6 +34,8 @@ use hv1_structs::VtlArray;
 use hvdef::HvRegisterCrInterceptControl;
 use inspect::Inspect;
 use inspect::InspectMut;
+use virt_support_gic::PendingInterrupt;
+use virt_support_gic::TmkGic;
 use virt::VpHaltReason;
 use virt::VpIndex;
 use virt::aarch64::vp;
@@ -40,6 +43,8 @@ use virt::aarch64::vp::AccessVpState;
 use virt::io::CpuIo;
 use virt_support_aarch64emu::translate::TranslationRegisters;
 use zerocopy::FromZeros;
+use std::sync::Arc;
+use std::cmp::min;
 
 #[derive(Debug, Error)]
 #[error("failed to run")]
@@ -67,9 +72,24 @@ enum CcaUnsupportedExit {
         reason: InstructionAbortReason,
         far_not_valid: bool,
     },
+    #[error("no free GIC list register for virtual interrupt {0}")]
+    NoFreeGicListRegister(u32),
 }
 
 const AARCH64_ZERO_REGISTER_INDEX: u8 = 31;
+const CNTV_CTL_ENABLE: u64 = 1 << 0;
+const CNTV_CTL_IMASK: u64 = 1 << 1;
+const CNTV_CTL_ISTATUS: u64 = 1 << 2;
+
+const ICH_LR_VINTID_MASK: u64 = u32::MAX as u64;
+const ICH_LR_PRIORITY_SHIFT: u32 = 48;
+const ICH_LR_GROUP1: u64 = 1 << 60;
+const ICH_LR_PENDING: u64 = 1 << 62;
+const ICH_LR_ACTIVE: u64 = 2 << 62;
+const ICH_LR_STATE_MASK: u64 = 3 << 62;
+const DEFAULT_GIC_PRIORITY: u8 = 0x80;
+const RSI_PLANE_EXIT_INVALID: u64 = u64::MAX;
+const ICH_LR_PRIORITY_MASK: u64 = 0xff << ICH_LR_PRIORITY_SHIFT;
 
 // For use with Hyper-V synthetic interrupt controller allocated by paravisor.
 enum UhDirectOverlay {
@@ -113,12 +133,14 @@ impl CcaVtl {
 #[derive(Inspect)]
 pub struct CcaBackedShared {
     pub(crate) cvm: UhCvmPartitionState,
+    virt_timer_ppi: u32,
 }
 
 impl CcaBackedShared {
-    pub(crate) fn new(params: BackingSharedParams<'_>) -> Result<Self, Error> {
+    pub(crate) fn new(params: BackingSharedParams<'_>, virt_timer_ppi: u32) -> Result<Self, Error> {
         Ok(Self {
             cvm: params.cvm_state.unwrap(),
+            virt_timer_ppi,
         })
     }
 }
@@ -168,9 +190,9 @@ impl From<u64> for PlaneExitReason {
 
 /// A wrapper around the CCA RSI plane exit structure, providing methods to
 /// access information regarding the exit of the plane.
-struct CcaExit<'a>(&'a cca_rsi_plane_exit);
+struct CcaExit(cca_rsi_plane_exit);
 
-impl<'a> CcaExit<'a> {
+impl CcaExit {
     fn exit_reason(&self) -> PlaneExitReason {
         self.0.exit_reason.into()
     }
@@ -201,6 +223,53 @@ impl<'a> CcaExit<'a> {
             index => self.0.gprs.get(usize::from(index)).copied(),
         }
     }
+
+    fn virtual_timer_asserted(&self) -> bool {
+        self.0.cntv_ctl_el0 & (CNTV_CTL_ENABLE | CNTV_CTL_IMASK | CNTV_CTL_ISTATUS)
+            == CNTV_CTL_ENABLE | CNTV_CTL_ISTATUS
+    }
+}
+
+fn inject_virtual_interrupt(lrs: &mut [u64], interrupt: PendingInterrupt) -> bool {
+    if lrs
+        .iter()
+        .any(|lr| *lr & ICH_LR_STATE_MASK != 0 && *lr & ICH_LR_VINTID_MASK == u64::from(interrupt.intid))
+    {
+        return true;
+    }
+
+    let Some(lr) = lrs.iter_mut().find(|lr| **lr & ICH_LR_STATE_MASK == 0) else {
+        return false;
+    };
+
+    let group = if interrupt.group1 { ICH_LR_GROUP1 } else { 0 };
+
+    *lr = u64::from(interrupt.intid)
+        | (u64::from(DEFAULT_GIC_PRIORITY) << ICH_LR_PRIORITY_SHIFT)
+        | group
+        | ICH_LR_PENDING;
+    true
+}
+
+fn running_priority(lrs: &[u64]) -> u8 {
+
+    let mut running = 0xff;
+
+    for &lr in lrs {
+
+        let state = lr & ICH_LR_STATE_MASK;
+
+        if state & ICH_LR_PENDING != ICH_LR_PENDING && state & ICH_LR_ACTIVE != ICH_LR_ACTIVE {
+            continue;
+        }
+
+        let priority = ((lr >> ICH_LR_PRIORITY_SHIFT) & ICH_LR_PRIORITY_MASK) as u8;
+
+        running = min(running, priority);
+
+    }
+
+    running
 }
 
 fn extend_mmio_read(data: [u8; size_of::<u64>()], len: usize, sign_extend: bool, sf: bool) -> u64 {
@@ -209,11 +278,14 @@ fn extend_mmio_read(data: [u8; size_of::<u64>()], len: usize, sign_extend: bool,
         let shift = 64 - len * 8;
         let value = ((value as i64) << shift >> shift) as u64;
         if sf {
+            println!("in mmio read. Value: {}", value);
             value
         } else {
+            println!("in mmio read. Value: {}", value);
             value & u64::from(u32::MAX)
         }
     } else {
+        println!("in mmio read. Value: {}", value);
         value & ((1u128 << (len * 8)) - 1) as u64
     }
 }
@@ -290,6 +362,7 @@ impl BackingPrivate for CcaBacked {
 
         // TODO: CCA: NEXT: move this to `init`?
         this.set_plane_enter();
+        this.runner.cca_rsi_plane_run_mut().exit.exit_reason = RSI_PLANE_EXIT_INVALID;
 
         // Run the CCA plane.
         // This will return when the plane exits.
@@ -299,20 +372,27 @@ impl BackingPrivate for CcaBacked {
             .map_err(|e| dev.fatal_error(CcaRunVpError(e).into()))?;
 
         // Preserve the plane context, so we can restore it later.
-        this.preserve_plane_context();
+        // this.preserve_plane_context();
 
-        if intercepted {
+        if intercepted && this.runner.cca_rsi_plane_exit().exit_reason != RSI_PLANE_EXIT_INVALID {
+
+            let lrs = this.runner.cca_rsi_plane_exit().gicv3_lrs.clone();
+
+            // Preserve the plane context, so we can restore it later.
+            this.preserve_plane_context();
+
             // CCA: note, this is a very simplified version of the exit handling,
             // just enough to get the TMK running.
             // TODO: CCA: NEXT: document how we integrate with the wider emulation
             // system.
-            let cca_exit = CcaExit(this.runner.cca_rsi_plane_exit());
+            let cca_exit = CcaExit(*this.runner.cca_rsi_plane_exit());
             let exit_reason = cca_exit.exit_reason();
             let esr_el2 = cca_exit.esr_el2();
             match exit_reason {
                 PlaneExitReason::Sync => {
                     match cca_exit.esr_el2_class() {
                         ExceptionClass::DataAbort => {
+                            println!("In DataAbort");
                             // get the address that caused the data abort
                             let address = cca_exit.far_el2();
                             let iss = IssDataAbort::from(esr_el2.iss());
@@ -333,12 +413,15 @@ impl BackingPrivate for CcaBacked {
                             if iss.wnr() {
                                 // Handle MMIO write
                                 if let Some(value) = cca_exit.gpr_or_zero_register(srt) {
+
                                     dev.write_mmio(
                                         this.vp_index(),
                                         address,
                                         &value.to_ne_bytes()[..len],
                                     )
                                     .await;
+
+
                                 } else {
                                     tracing::warn!(
                                         srt,
@@ -446,8 +529,11 @@ impl BackingPrivate for CcaBacked {
                     }
                 }
                 PlaneExitReason::Irq => {
-                    // Handle IRQ exit
-                    tracing::warn!("IRQ triggered, but not handled");
+
+                    this.handle_irq_sources(&cca_exit, esr_el2);
+
+                    UhProcessor::<'_, CcaBacked>::refill_virtual_interrupts(&this.shared.cvm.gic, this.vp_index(), &mut this.runner.cca_rsi_plane_entry().gicv3_lrs)
+                        .map_err(|intid| dev.fatal_error(CcaUnsupportedExit::NoFreeGicListRegister(intid).into()))?;
                 }
                 PlaneExitReason::Unknown(exit_reason) => {
                     tracing::warn!(exit_reason, "unsupported CCA plane exit reason");
@@ -545,8 +631,119 @@ impl UhProcessor<'_, CcaBacked> {
         // Set the PC to the ELR_EL2 value from the exit context.
         plane_run.entry.pc = plane_run.exit.elr_el2;
 
-        // Set GICv3 HCR to the value from the exit context.
+        // Restore the interrupted PSTATE, including the IRQ mask.
+        plane_run.entry.pstate = plane_run.exit.pstate;
+
+        // Preserve the virtual GIC state across plane exits.
         plane_run.entry.gicv3_hcr = plane_run.exit.gicv3_hcr;
+        plane_run
+            .entry
+            .gicv3_lrs
+            .copy_from_slice(&plane_run.exit.gicv3_lrs);
+    }
+
+    pub fn tmk_gic(&self) -> Arc<TmkGic> {
+        Arc::clone(&self.partition.backing_shared.cvm_state().unwrap().gic)
+    }
+
+    fn handle_irq_sources(
+        &mut self,
+        cca_exit: &CcaExit,
+        esr_el2: EsrEl2,
+    ) -> Result<(), VpHaltReason> {
+        self.handle_gic_sysreg_write(cca_exit, esr_el2)?;
+
+        if cca_exit.virtual_timer_asserted() {
+            let intid = self.shared.virt_timer_ppi;
+
+            if !self.shared.cvm.gic.raise_ppi(self.vp_index(), intid) {
+                tracing::trace!(
+                    intid,
+                    "virtual timer PPI was already pending or VP was invalid"
+                );
+            }
+        }
+
+        Ok(())
+    }
+
+    fn handle_gic_sysreg_write(
+        &mut self,
+        cca_exit: &CcaExit,
+        esr_el2: EsrEl2,
+    ) -> Result<(), VpHaltReason> {
+
+        let iss = IssSystem::from(esr_el2.iss());
+
+        if !iss.is_write() {
+            return Ok(());
+        }
+
+        let reg = iss.system_reg();
+
+        if !matches!(
+            reg,
+            SystemReg::ICC_SGI0R_EL1 | SystemReg::ICC_SGI1R_EL1
+        ) {
+            return Ok(());
+        }
+
+        let value = match iss.rt() {
+            31 => 0,
+            rt => cca_exit.0.gprs[rt as usize],
+        };
+
+        let handled = self
+            .shared
+            .cvm
+            .gic
+            .write_sysreg(reg, value, |target_vp| {
+                tracing::trace!(
+                    target_vp,
+                    ?reg,
+                    "GIC sysreg write raised an interrupt"
+                );
+            });
+
+        if !handled {
+            tracing::warn!(?reg, value, "unhandled GIC system-register write");
+        }
+
+        Ok(())
+    }
+
+    fn refill_virtual_interrupts(
+        gic: &TmkGic,
+        vp: VpIndex,
+        lrs: &mut [u64],
+    ) -> Result<(), u32> {
+        loop {
+            if !lrs
+                .iter()
+                .any(|lr| lr & ICH_LR_STATE_MASK == 0)
+            {
+                return Ok(());
+            }
+
+            let running_priority = running_priority(lrs);
+
+            let Some(pending) =
+                gic.next_pending_interrupt(vp, running_priority)
+            else {
+                return Ok(());
+            };
+
+            tracing::debug!(
+                intid = pending.intid,
+                priority = pending.priority,
+                group1 = pending.group1,
+                "injecting pending virtual interrupt"
+            );
+
+            if !inject_virtual_interrupt(lrs, pending) {
+                return Err(pending.intid);
+            }
+        }
     }
 
     // TODO: CCA: lots of stuff might be needed based on the TDX implementation, something akin to:

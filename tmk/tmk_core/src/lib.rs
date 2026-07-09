@@ -7,7 +7,7 @@
 // UNSAFETY: needed to write low-level TMK code.
 #![expect(unsafe_code)]
 
-mod aarch64;
+pub mod aarch64;
 pub mod x86_64;
 
 #[cfg(target_arch = "aarch64")]

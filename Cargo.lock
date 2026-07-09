@@ -8038,6 +8038,7 @@ dependencies = [
 name = "tmk_vmm"
 version = "0.0.0"
 dependencies = [
+ "aarch64defs",
  "anyhow",
  "build_rs_guest_arch",
  "clap",
@@ -8063,6 +8064,7 @@ dependencies = [
  "virt_kvm",
  "virt_mshv",
  "virt_mshv_vtl",
+ "virt_support_gic",
  "virt_whp",
  "vm_loader",
  "vm_topology",
@@ -9299,6 +9301,7 @@ dependencies = [
  "virt",
  "virt_support_aarch64emu",
  "virt_support_apic",
+ "virt_support_gic",
  "virt_support_x86emu",
  "vm_topology",
  "vmcore",
@@ -9347,7 +9350,9 @@ name = "virt_support_gic"
 version = "0.0.0"
 dependencies = [
  "aarch64defs",
+ "anyhow",
  "inspect",
+ "inspect_derive",
  "memory_range",
  "parking_lot",
  "tracelimit",

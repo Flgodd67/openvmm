@@ -134,6 +134,7 @@ use zerocopy::FromZeros;
 use zerocopy::Immutable;
 use zerocopy::IntoBytes;
 use zerocopy::KnownLayout;
+use virt_support_gic::TmkGic;
 
 /// General error returned by operations.
 #[derive(Error, Debug)]
@@ -292,9 +293,10 @@ impl BackingShared {
                 backing_shared_params,
             )?),
             #[cfg(guest_arch = "aarch64")]
-            IsolationType::Cca => {
-                BackingShared::Cca(Box::new(CcaBackedShared::new(backing_shared_params)?))
-            }
+            IsolationType::Cca => BackingShared::Cca(Box::new(CcaBackedShared::new(
+                backing_shared_params,
+                partition_params.topology.virt_timer_ppi(),
+            )?)),
             _ => unreachable!(),
         })
     }
@@ -501,6 +503,8 @@ struct UhCvmPartitionState {
     private_dma_client: Arc<dyn DmaClient>,
     hide_isolation: bool,
     proxy_interrupt_redirect: bool,
+    #[cfg(guest_arch = "aarch64")]
+    gic: Arc<TmkGic>,
 }
 
 #[cfg_attr(guest_arch = "aarch64", expect(dead_code))]
@@ -2277,6 +2281,9 @@ impl UhProtoPartition<'_> {
             is_ref_time_backed_by_tsc: true,
         });
 
+        #[cfg(guest_arch = "aarch64")]
+        let gic = Arc::new(TmkGic::new(&params.topology).expect("expected TmkGic"));
+
         Ok(UhCvmPartitionState {
             #[cfg(guest_arch = "x86_64")]
             vps_per_socket: params.topology.reserved_vps_per_socket(),
@@ -2292,6 +2299,8 @@ impl UhProtoPartition<'_> {
             private_dma_client: late_params.private_dma_client,
             hide_isolation: params.hide_isolation,
             proxy_interrupt_redirect: proxy_interrupt_redirect_available,
+            #[cfg(guest_arch = "aarch64")]
+            gic,
         })
     }
 
