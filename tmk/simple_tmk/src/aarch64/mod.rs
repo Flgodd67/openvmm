@@ -11,6 +11,81 @@
 
 use crate::prelude::*;
 use tmk_protocol as _;
+use core::sync::atomic::AtomicBool;
+use core::sync::atomic::Ordering::Relaxed;
+use tmk_core::TestContext;
+use tmk_core::aarch64::IrqContext;
+use tmk_core::aarch64::disable_virtual_timer;
+use tmk_core::aarch64::read_cntfrq;
+use tmk_core::aarch64::read_cntvct;
+use tmk_core::aarch64::set_virtual_timer_compare;
+
+#[tmk_test]
+fn gic_virtual_timer(t: TestContext<'_>) {
+    // Use the INTID your plane1 virtual platform wires the timer to.
+    //
+    // You mentioned PPI 20, so use 20 if that is what the vGIC exposes.
+    // For the architectural virtual timer on many GIC systems, this is often INTID 27.
+    const TIMER_INTID: u32 = 20;
+
+    let timer_fired = AtomicBool::new(false);
+
+    let timer_isr = |ctx: &mut IrqContext| {
+        log!("timer fired, intid={}", ctx.intid);
+
+        assert_eq!(
+            ctx.intid, TIMER_INTID,
+            "unexpected interrupt ID"
+        );
+
+        timer_fired.store(true, Relaxed);
+    };
+
+    t.scope.subscope(|s| {
+        // Install the plane1 IRQ callback.
+        s.set_irq_handler(&timer_isr);
+
+        // Enable this PPI in the vGIC Redistributor for this VP.
+        s.enable_gic_irq(TIMER_INTID);
+
+        // Program the virtual timer.
+        let freq = read_cntfrq();
+        let start = read_cntvct();
+
+        // Fire after about 10 ms.
+        let delay_ticks = freq / 100;
+        let compare = start + delay_ticks;
+
+        set_virtual_timer_compare(compare);
+
+        // Now allow IRQ exceptions to be taken.
+        s.enable_interrupts();
+
+        for _ in 0..1_000_000_000 {
+            if timer_fired.load(Relaxed) {
+                break;
+            }
+
+            core::hint::spin_loop();
+        }
+
+        assert!(
+            timer_fired.load(Relaxed),
+            "virtual timer interrupt did not fire"
+        );
+
+        let now = read_cntvct();
+        log!("start={}, compare={}, now={}", start, compare, now);
+
+        assert!(
+            now >= compare,
+            "timer fired before the compare value"
+        );
+
+        disable_virtual_timer();
+        s.disable_gic_irq(TIMER_INTID);
+    });
+}
 
 core::arch::global_asm! {
     ".global instruction_abort_outside_par_entry",

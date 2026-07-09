@@ -10,8 +10,8 @@ use super::Scope;
 use core::sync::atomic::AtomicBool;
 use core::sync::atomic::Ordering::Relaxed;
 
-const GIC_DISTRIBUTOR_BASE: usize = 0xff00_0000;
-const GIC_REDISTRIBUTOR_BASE: usize = 0xff10_0000;
+const GIC_DISTRIBUTOR_BASE: usize = 0xff000000;
+const GIC_REDISTRIBUTOR_BASE: usize = 0xff020000;
 const GIC_REDISTRIBUTOR_SGI_BASE: usize = GIC_REDISTRIBUTOR_BASE + 0x1_0000;
 
 const GICD_CTLR: usize = GIC_DISTRIBUTOR_BASE;
