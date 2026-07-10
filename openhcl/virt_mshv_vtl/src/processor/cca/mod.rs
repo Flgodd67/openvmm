@@ -313,6 +313,7 @@ impl BackingPrivate for CcaBacked {
                 PlaneExitReason::Sync => {
                     match cca_exit.esr_el2_class() {
                         ExceptionClass::DataAbort => {
+                            println!("In DataAbort");
                             // get the address that caused the data abort
                             let address = cca_exit.far_el2();
                             let iss = IssDataAbort::from(esr_el2.iss());
@@ -448,6 +449,7 @@ impl BackingPrivate for CcaBacked {
                 PlaneExitReason::Irq => {
                     // Handle IRQ exit
                     tracing::warn!("IRQ triggered, but not handled");
+
                 }
                 PlaneExitReason::Unknown(exit_reason) => {
                     tracing::warn!(exit_reason, "unsupported CCA plane exit reason");
