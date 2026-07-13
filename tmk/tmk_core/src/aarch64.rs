@@ -6,12 +6,13 @@
 #![cfg(target_arch = "aarch64")]
 
 use super::Scope;
+use crate::log;
 
 use core::sync::atomic::AtomicBool;
 use core::sync::atomic::Ordering::Relaxed;
 
-const GIC_DISTRIBUTOR_BASE: usize = 0xff000000;
-const GIC_REDISTRIBUTOR_BASE: usize = 0xff020000;
+const GIC_DISTRIBUTOR_BASE: usize = tmk_protocol::aarch64::GIC_DISTRIBUTOR_BASE as usize;
+const GIC_REDISTRIBUTOR_BASE: usize = tmk_protocol::aarch64::GIC_REDISTRIBUTOR_BASE as usize;
 const GIC_REDISTRIBUTOR_SGI_BASE: usize = GIC_REDISTRIBUTOR_BASE + 0x1_0000;
 
 const GICD_CTLR: usize = GIC_DISTRIBUTOR_BASE;
@@ -24,6 +25,9 @@ const GICR_IPRIORITYR0: usize = GIC_REDISTRIBUTOR_SGI_BASE + 0x400;
 const GIC_SPECIAL_INTID: u32 = 1020;
 const DAIF_IRQ_MASK: u64 = 1 << 7;
 const GICD_CTLR_ENABLE_GRP1_AND_ARE: u32 = (1 << 1) | (1 << 4);
+
+/// GIC interrupt ID used by the architectural virtual timer.
+pub const VIRTUAL_TIMER_PPI: u32 = tmk_protocol::aarch64::VIRTUAL_TIMER_PPI;
 
 static ARCH_INITIALIZED: AtomicBool = AtomicBool::new(false);
 static mut IRQ_HANDLER: [usize; 2] = [0; 2];
@@ -211,14 +215,20 @@ impl<'scope> Scope<'scope, '_> {
         assert!(intid < 32, "only SGI/PPI interrupts are supported");
         enable_gic_for_current_vp();
         write_reg32(GICR_IGROUPR0, read_reg32(GICR_IGROUPR0) | (1 << intid));
-        write_reg8(GICR_IPRIORITYR0 + intid as usize, 0x80);
+
+        let priority_address = GICR_IPRIORITYR0 + (intid as usize & !3);
+        let priority_shift = (intid & 3) * 8;
+        let priority = read_reg32(priority_address) & !(0xff << priority_shift);
+        write_reg32(priority_address, priority | (0x80 << priority_shift));
         write_reg32(GICR_ISENABLER0, 1 << intid);
+        // memory_barrier();
     }
 
     /// Disables a GIC SGI/PPI interrupt for the current VP.
     pub fn disable_gic_irq(&self, intid: u32) {
         assert!(intid < 32, "only SGI/PPI interrupts are supported");
         write_reg32(GICR_ICENABLER0, 1 << intid);
+        // memory_barrier();
     }
 
     /// Enables IRQ delivery.
@@ -274,8 +284,20 @@ pub fn set_virtual_timer_compare(count: u64) {
 pub fn disable_virtual_timer() {
     // SAFETY: programming the virtual timer is expected in TMK tests.
     unsafe {
-        core::arch::asm!("msr CNTV_CTL_EL0, {control}", control = in(reg) 0u64);
+        core::arch::asm!(
+            "msr CNTV_CTL_EL0, {control}",
+            "isb",
+            control = in(reg) 0u64,
+        );
     }
+}
+
+/// Polls the emulated GIC while waiting for an interrupt.
+///
+/// This gives VMMs that emulate the GIC a regular exit on which to observe
+/// changes to interrupt sources that are managed outside the guest.
+pub fn poll_interrupts() {
+    let _ = read_reg32(GICD_CTLR);
 }
 
 #[cfg_attr(not(minimal_rt), expect(dead_code))]
@@ -338,13 +360,17 @@ fn arch_init_once() {
 }
 
 fn enable_gic_for_current_vp() {
+    log!("GICD_CTLR 1: {}", read_reg32(GICD_CTLR));
     write_reg32(GICD_CTLR, GICD_CTLR_ENABLE_GRP1_AND_ARE);
+    log!("GICD_CTLR 2: {}", read_reg32(GICD_CTLR));
 
     let waker = read_reg32(GICR_WAKER) & !(1 << 1);
+    log!("waker: {}", waker);
     write_reg32(GICR_WAKER, waker);
     while read_reg32(GICR_WAKER) & (1 << 2) != 0 {
         core::hint::spin_loop();
     }
+    log!("After spin loop");
 
     // SAFETY: programming the GIC CPU system-register interface is expected in TMK tests.
     unsafe {

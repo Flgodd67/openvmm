@@ -292,9 +292,10 @@ impl BackingShared {
                 backing_shared_params,
             )?),
             #[cfg(guest_arch = "aarch64")]
-            IsolationType::Cca => {
-                BackingShared::Cca(Box::new(CcaBackedShared::new(backing_shared_params)?))
-            }
+            IsolationType::Cca => BackingShared::Cca(Box::new(CcaBackedShared::new(
+                backing_shared_params,
+                partition_params.topology.virt_timer_ppi(),
+            )?)),
             _ => unreachable!(),
         })
     }

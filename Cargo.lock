@@ -8038,6 +8038,7 @@ dependencies = [
 name = "tmk_vmm"
 version = "0.0.0"
 dependencies = [
+ "aarch64defs",
  "anyhow",
  "build_rs_guest_arch",
  "clap",
@@ -8063,6 +8064,7 @@ dependencies = [
  "virt_kvm",
  "virt_mshv",
  "virt_mshv_vtl",
+ "virt_support_gic",
  "virt_whp",
  "vm_loader",
  "vm_topology",

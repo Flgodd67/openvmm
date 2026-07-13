@@ -9,6 +9,8 @@ use anyhow::Context as _;
 use futures::StreamExt as _;
 use guestmem::GuestMemory;
 use hvdef::Vtl;
+#[cfg(guest_arch = "aarch64")]
+use memory_range::MemoryRange;
 use pal_async::DefaultDriver;
 use std::sync::Arc;
 #[cfg(target_os = "linux")]
@@ -22,12 +24,74 @@ use virt::vp::AccessVpState as _;
 use vm_topology::memory::MemoryLayout;
 use vm_topology::processor::ProcessorTopology;
 use vm_topology::processor::TopologyBuilder;
+#[cfg(guest_arch = "aarch64")]
+use vm_topology::processor::aarch64::GicVersion;
 use vmcore::vmtime::VmTime;
 use vmcore::vmtime::VmTimeKeeper;
 use vmcore::vmtime::VmTimeSource;
 use zerocopy::TryFromBytes as _;
 
 pub const COMMAND_ADDRESS: u64 = 0xffff_0000;
+
+#[cfg(guest_arch = "aarch64")]
+struct TmkGic {
+    distributor: virt_support_gic::Distributor,
+    distributor_range: MemoryRange,
+    redistributor_range: MemoryRange,
+}
+
+#[cfg(guest_arch = "aarch64")]
+impl TmkGic {
+    fn new(topology: &ProcessorTopology) -> anyhow::Result<Self> {
+        let redistributors_base = match topology.gic_version() {
+            GicVersion::V3 {
+                redistributors_base,
+            } => redistributors_base,
+            GicVersion::V2 { .. } => anyhow::bail!("TMK software GIC requires GICv3"),
+        };
+        let redistributors_size = aarch64defs::GIC_REDISTRIBUTOR_SIZE
+            .checked_mul(u64::from(topology.vp_count()))
+            .context("GIC redistributor range overflowed")?;
+        let redistributors_end = redistributors_base
+            .checked_add(redistributors_size)
+            .context("GIC redistributor range overflowed")?;
+        let redistributor_range = MemoryRange::new(redistributors_base..redistributors_end);
+        let distributor_base = topology.gic_distributor_base();
+        let distributor_end = distributor_base
+            .checked_add(aarch64defs::GIC_DISTRIBUTOR_SIZE)
+            .context("GIC distributor range overflowed")?;
+        let distributor_range = MemoryRange::new(distributor_base..distributor_end);
+
+        let mut distributor = virt_support_gic::Distributor::new(
+            distributor_base,
+            redistributor_range,
+            topology.gic_nr_irqs(),
+        );
+        let vp_count = topology.vp_count() as usize;
+        for (index, vp) in topology.vps_arch().enumerate() {
+            distributor.add_redistributor(vp.mpidr.into(), index + 1 == vp_count);
+        }
+
+        Ok(Self {
+            distributor,
+            distributor_range,
+            redistributor_range,
+        })
+    }
+
+    fn contains(&self, address: u64) -> bool {
+        self.distributor_range.contains_addr(address)
+            || self.redistributor_range.contains_addr(address)
+    }
+
+    fn read(&self, address: u64, data: &mut [u8]) -> bool {
+        self.distributor.read(address, data)
+    }
+
+    fn write(&self, address: u64, data: &[u8]) -> bool {
+        self.distributor.write(address, data)
+    }
+}
 
 #[cfg(all(target_os = "linux", guest_arch = "aarch64"))]
 mod cca {
@@ -50,6 +114,7 @@ mod cca {
     pub(super) struct CcaState {
         pub(super) private_dma_client: Arc<dyn DmaClient>,
         pub(super) _guest_ram_backing: MemoryBlock,
+        // pub(super) gic_dma_client: Arc<dyn DmaClient>,
     }
 
     pub(super) fn build(
@@ -132,9 +197,13 @@ mod cca {
                     acceptor.apply_initial_lower_vtl_protections(range)?;
                 }
 
+                // gic builder part
+                // let gic_dma_client: Arc<dyn DmaClient> = Arc::new(LockedMemorySpawner);
+
                 Ok(Some(CcaState {
                     private_dma_client,
                     _guest_ram_backing: private_memory,
+                    // gic_dma_client,
                 }))
             }
             _ => Ok(None),
@@ -218,17 +287,77 @@ impl CommonState {
         #[cfg(guest_arch = "aarch64")]
         let processor_topology =
             TopologyBuilder::new_aarch64(vm_topology::processor::arch::Aarch64PlatformConfig {
-                gic_distributor_base: 0xff000000,
+                gic_distributor_base: tmk_protocol::aarch64::GIC_DISTRIBUTOR_BASE,
                 gic_version: vm_topology::processor::aarch64::GicVersion::V3 {
-                    redistributors_base: 0xff020000,
+                    redistributors_base: tmk_protocol::aarch64::GIC_REDISTRIBUTOR_BASE,
                 },
                 gic_msi: vm_topology::processor::aarch64::GicMsiController::None,
                 pmu_gsiv: None,
-                virt_timer_ppi: 20, // DEFAULT_VIRT_TIMER_PPI
-                gic_nr_irqs: 256,
+                virt_timer_ppi: tmk_protocol::aarch64::VIRTUAL_TIMER_PPI, // DEFAULT_VIRT_TIMER_PPI
+                gic_nr_irqs: tmk_protocol::aarch64::GIC_INTERRUPT_COUNT,
             })
             .build(1)
             .context("failed to build processor topology")?;
+
+        // {
+        //     // mmapping gic
+
+        //     const GICD_BASE: usize = 0x3fff_0000;
+        //     const GICD_SIZE: usize = 0x0001_0000;
+
+        //     const GICD_TYPER: usize = 0x0004;
+        //     const GICD_IIDR: usize = 0x0008;
+
+        //     let file = OpenOptions::new()
+        //         .read(true)
+        //         .write(true)
+        //         .custom_flags(libc::O_SYNC)
+        //         .open("/dev/mem")?;
+
+        //     let page_size = unsafe { libc::sysconf(libc::_SC_PAGESIZE) };
+        //     if page_size <= 0 {
+        //         return Err(io::Error::last_os_error());
+        //     }
+
+        //     let page_size = page_size as usize;
+
+        //     let map_base = GICD_BASE & !(page_size - 1);
+        //     let page_off = GICD_BASE - map_base;
+        //     let map_len = GICD_SIZE + page_off;
+
+        //     let map = unsafe {
+        //         libc::mmap(
+        //             ptr::null_mut(),
+        //             map_len,
+        //             libc::PROT_READ | libc::PROT_WRITE,
+        //             libc::MAP_SHARED,
+        //             file.as_raw_fd(),
+        //             map_base as libc::off_t,
+        //         )
+        //     };
+
+        //     if map == libc::MAP_FAILED {
+        //         return Err(io::Error::last_os_error());
+        //     }
+
+        //     let gicd = unsafe { (map as *mut u8).add(page_off) };
+
+        //     let typer = unsafe {
+        //         ptr::read_volatile(gicd.add(GICD_TYPER) as *const u32)
+        //     };
+
+        //     let iidr = unsafe {
+        //         ptr::read_volatile(gicd.add(GICD_IIDR) as *const u32)
+        //     };
+
+        //     println!("GICD_TYPER = {:#x}", typer);
+        //     println!("GICD_IIDR  = {:#x}", iidr);
+
+        //     let rc = unsafe { libc::munmap(map, map_len) };
+        //     if rc != 0 {
+        //         return Err(io::Error::last_os_error());
+        //     }
+        // }
 
         let ram_size = 0x400000;
 
@@ -377,6 +506,9 @@ impl RunContext<'_> {
     ) -> anyhow::Result<TestResult> {
         let (event_send, mut event_recv) = mesh::channel();
 
+        #[cfg(guest_arch = "aarch64")]
+        let gic = Arc::new(TmkGic::new(&self.state.processor_topology)?);
+
         // Load the TMK.
         let tmk = fs_err::File::open(&self.state.opts.tmk).context("failed to open tmk")?;
         let regs = {
@@ -411,6 +543,8 @@ impl RunContext<'_> {
                 Arc::clone(&regs),
                 guest_memory.clone(),
                 event_send.clone(),
+                #[cfg(guest_arch = "aarch64")]
+                gic,
             ),
         )
         .await?;
@@ -454,6 +588,8 @@ struct IoHandler<'a> {
     guest_memory: &'a GuestMemory,
     event_send: &'a mesh::Sender<VpEvent>,
     stop: &'a StopVpSource,
+    #[cfg(guest_arch = "aarch64")]
+    gic: &'a TmkGic,
 }
 
 fn widen(d: &[u8]) -> u64 {
@@ -463,8 +599,16 @@ fn widen(d: &[u8]) -> u64 {
 }
 
 impl CpuIo for IoHandler<'_> {
-    fn is_mmio(&self, _address: u64) -> bool {
-        false
+    fn is_mmio(&self, address: u64) -> bool {
+        #[cfg(guest_arch = "aarch64")]
+        {
+            self.gic.contains(address)
+        }
+        #[cfg(not(guest_arch = "aarch64"))]
+        {
+            let _ = address;
+            false
+        }
     }
 
     fn acknowledge_pic_interrupt(&self) -> Option<u8> {
@@ -476,6 +620,10 @@ impl CpuIo for IoHandler<'_> {
     }
 
     async fn read_mmio(&self, vp: VpIndex, address: u64, data: &mut [u8]) {
+        #[cfg(guest_arch = "aarch64")]
+        if self.gic.read(address, data) {
+            return;
+        }
         tracing::info!(vp = vp.index(), address, "read mmio");
         data.fill(!0);
     }
@@ -491,9 +639,16 @@ impl CpuIo for IoHandler<'_> {
                     "failed to handle command"
                 );
             }
-        } else {
-            tracing::info!(vp = vp.index(), address, data = widen(data), "write mmio");
+
+            return;
         }
+
+        #[cfg(guest_arch = "aarch64")]
+        if self.gic.write(address, data) {
+            return;
+        }
+
+        tracing::info!(vp = vp.index(), address, data = widen(data), "write mmio");
     }
 
     async fn read_io(&self, vp: VpIndex, port: u16, data: &mut [u8]) {
@@ -567,6 +722,8 @@ pub struct RunnerBuilder {
     regs: Arc<virt::InitialRegs>,
     guest_memory: GuestMemory,
     event_send: mesh::Sender<VpEvent>,
+    #[cfg(guest_arch = "aarch64")]
+    gic: Arc<TmkGic>,
 }
 
 impl RunnerBuilder {
@@ -575,12 +732,15 @@ impl RunnerBuilder {
         regs: Arc<virt::InitialRegs>,
         guest_memory: GuestMemory,
         event_send: mesh::Sender<VpEvent>,
+        #[cfg(guest_arch = "aarch64")] gic: Arc<TmkGic>,
     ) -> Self {
         Self {
             vp_index,
             regs,
             guest_memory,
             event_send,
+            #[cfg(guest_arch = "aarch64")]
+            gic,
         }
     }
 
@@ -614,6 +774,8 @@ impl RunnerBuilder {
             vp_index: self.vp_index,
             guest_memory: &self.guest_memory,
             event_send: &self.event_send,
+            #[cfg(guest_arch = "aarch64")]
+            gic: &self.gic,
         })
     }
 }
@@ -623,6 +785,8 @@ pub struct Runner<'a, P> {
     vp_index: VpIndex,
     guest_memory: &'a GuestMemory,
     event_send: &'a mesh::Sender<VpEvent>,
+    #[cfg(guest_arch = "aarch64")]
+    gic: &'a TmkGic,
 }
 
 impl<P: Processor> Runner<'_, P> {
@@ -636,6 +800,8 @@ impl<P: Processor> Runner<'_, P> {
                     guest_memory: self.guest_memory,
                     event_send: self.event_send,
                     stop: &stop,
+                    #[cfg(guest_arch = "aarch64")]
+                    gic: self.gic,
                 },
             )
             .await;
