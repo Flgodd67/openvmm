@@ -558,8 +558,6 @@ impl RunContext<'_> {
     ) -> anyhow::Result<TestResult> {
         let (event_send, mut event_recv) = mesh::channel();
 
-        #[cfg(guest_arch = "aarch64")]
-        let gic = Arc::new(TmkGic::new(&self.state.processor_topology)?);
 
         // Load the TMK.
         let tmk = fs_err::File::open(&self.state.opts.tmk).context("failed to open tmk")?;
@@ -595,8 +593,6 @@ impl RunContext<'_> {
                 Arc::clone(&regs),
                 guest_memory.clone(),
                 event_send.clone(),
-                #[cfg(guest_arch = "aarch64")]
-                gic,
             ),
         )
         .await?;
@@ -641,7 +637,7 @@ struct IoHandler<'a> {
     event_send: &'a mesh::Sender<VpEvent>,
     stop: &'a StopVpSource,
     #[cfg(guest_arch = "aarch64")]
-    gic: &'a TmkGic,
+    gic: Arc<TmkGic>,
 }
 
 fn widen(d: &[u8]) -> u64 {
@@ -775,7 +771,7 @@ pub struct RunnerBuilder {
     guest_memory: GuestMemory,
     event_send: mesh::Sender<VpEvent>,
     #[cfg(guest_arch = "aarch64")]
-    gic: Arc<TmkGic>,
+    gic: Option<Arc<TmkGic>>,
 }
 
 impl RunnerBuilder {
@@ -784,7 +780,6 @@ impl RunnerBuilder {
         regs: Arc<virt::InitialRegs>,
         guest_memory: GuestMemory,
         event_send: mesh::Sender<VpEvent>,
-        #[cfg(guest_arch = "aarch64")] gic: Arc<TmkGic>,
     ) -> Self {
         Self {
             vp_index,
@@ -792,7 +787,7 @@ impl RunnerBuilder {
             guest_memory,
             event_send,
             #[cfg(guest_arch = "aarch64")]
-            gic,
+            gic: None,
         }
     }
 
@@ -827,8 +822,13 @@ impl RunnerBuilder {
             guest_memory: &self.guest_memory,
             event_send: &self.event_send,
             #[cfg(guest_arch = "aarch64")]
-            gic: &self.gic,
+            gic: self.gic.clone(),
         })
+    }
+
+    #[cfg(guest_arch = "aarch64")]
+    pub fn set_gic(&mut self, gic: Arc<TmkGic>) {
+        self.gic = Some(gic);
     }
 }
 
@@ -838,7 +838,7 @@ pub struct Runner<'a, P> {
     guest_memory: &'a GuestMemory,
     event_send: &'a mesh::Sender<VpEvent>,
     #[cfg(guest_arch = "aarch64")]
-    gic: &'a TmkGic,
+    gic: Option<Arc<TmkGic>>,
 }
 
 impl<P: Processor> Runner<'_, P> {
@@ -853,7 +853,7 @@ impl<P: Processor> Runner<'_, P> {
                     event_send: self.event_send,
                     stop: &stop,
                     #[cfg(guest_arch = "aarch64")]
-                    gic: self.gic,
+                    gic: self.gic.clone().unwrap(),
                 },
             )
             .await;

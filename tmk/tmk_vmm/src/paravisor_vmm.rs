@@ -118,6 +118,7 @@ async fn start_vp(
                 let vp = vp
                     .bind_processor::<virt_mshv_vtl::CcaBacked>(&driver, Some(&mut control))
                     .unwrap();
+                runner.set_gic(vp.tmk_gic());
                 runner.build(vp).unwrap().run_vp().await;
             }),
             _ => pool.client().set_idle_task(async move |mut control| {

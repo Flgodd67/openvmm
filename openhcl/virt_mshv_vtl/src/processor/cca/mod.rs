@@ -33,6 +33,7 @@ use hv1_structs::VtlArray;
 use hvdef::HvRegisterCrInterceptControl;
 use inspect::Inspect;
 use inspect::InspectMut;
+use virt_support_gic::TmkGic;
 use virt::VpHaltReason;
 use virt::VpIndex;
 use virt::aarch64::vp;
@@ -40,6 +41,7 @@ use virt::aarch64::vp::AccessVpState;
 use virt::io::CpuIo;
 use virt_support_aarch64emu::translate::TranslationRegisters;
 use zerocopy::FromZeros;
+use std::sync::Arc;
 
 #[derive(Debug, Error)]
 #[error("failed to run")]
@@ -513,6 +515,7 @@ impl BackingPrivate for CcaBacked {
                     }
                 }
                 PlaneExitReason::Irq => {
+                    // this.backing.cvm.gic.write(address, data);
                     if cca_exit.virtual_timer_asserted() {
                         let intid = this.shared.virt_timer_ppi;
                         if !inject_virtual_interrupt(
@@ -633,6 +636,10 @@ impl UhProcessor<'_, CcaBacked> {
             .entry
             .gicv3_lrs
             .copy_from_slice(&plane_run.exit.gicv3_lrs);
+    }
+
+    pub fn tmk_gic(&self) -> Arc<TmkGic> {
+        Arc::clone(&self.partition.backing_shared.cvm_state().unwrap().gic)
     }
 
     // TODO: CCA: lots of stuff might be needed based on the TDX implementation, something akin to:

@@ -841,11 +841,15 @@ use memory_range::MemoryRange;
 use vm_topology::processor::ProcessorTopology;
 use vm_topology::processor::aarch64::GicVersion;
 use vm_topology::memory::MemoryLayout;
+use inspect::Inspect;
 
+#[derive(Inspect)]
 pub struct TmkGic {
     distributor: Distributor,
     distributor_range: MemoryRange,
     redistributor_range: MemoryRange,
+
+    #[inspect(skip)]
     state: Mutex<GicState>,
 }
 
