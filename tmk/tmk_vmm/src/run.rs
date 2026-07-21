@@ -30,68 +30,120 @@ use vmcore::vmtime::VmTime;
 use vmcore::vmtime::VmTimeKeeper;
 use vmcore::vmtime::VmTimeSource;
 use zerocopy::TryFromBytes as _;
+use std::sync::Mutex;
+use virt_support_gic::TmkGic;
 
 pub const COMMAND_ADDRESS: u64 = 0xffff_0000;
 
-#[cfg(guest_arch = "aarch64")]
-struct TmkGic {
-    distributor: virt_support_gic::Distributor,
-    distributor_range: MemoryRange,
-    redistributor_range: MemoryRange,
-}
+// struct GicState {
+//     pending: Vec<u32>,
+//     enable: Vec<u32>,
+//     active: Vec<u32>,
+//     priority: Vec<u32>,
+// }
 
-#[cfg(guest_arch = "aarch64")]
-impl TmkGic {
-    fn new(topology: &ProcessorTopology) -> anyhow::Result<Self> {
-        let redistributors_base = match topology.gic_version() {
-            GicVersion::V3 {
-                redistributors_base,
-            } => redistributors_base,
-            GicVersion::V2 { .. } => anyhow::bail!("TMK software GIC requires GICv3"),
-        };
-        let redistributors_size = aarch64defs::GIC_REDISTRIBUTOR_SIZE
-            .checked_mul(u64::from(topology.vp_count()))
-            .context("GIC redistributor range overflowed")?;
-        let redistributors_end = redistributors_base
-            .checked_add(redistributors_size)
-            .context("GIC redistributor range overflowed")?;
-        let redistributor_range = MemoryRange::new(redistributors_base..redistributors_end);
-        let distributor_base = topology.gic_distributor_base();
-        let distributor_end = distributor_base
-            .checked_add(aarch64defs::GIC_DISTRIBUTOR_SIZE)
-            .context("GIC distributor range overflowed")?;
-        let distributor_range = MemoryRange::new(distributor_base..distributor_end);
+// impl GicState {
+//     fn new(num_interrupts: u32) -> Self {
+//         let bitmap_words = num_interrupts.div_ceil(32) as usize;
 
-        let mut distributor = virt_support_gic::Distributor::new(
-            distributor_base,
-            redistributor_range,
-            topology.gic_nr_irqs(),
-        );
-        let vp_count = topology.vp_count() as usize;
-        for (index, vp) in topology.vps_arch().enumerate() {
-            distributor.add_redistributor(vp.mpidr.into(), index + 1 == vp_count);
-        }
+//         Self {
+//             pending: vec![0; bitmap_words],
+//             enable: vec![0; bitmap_words],
+//             active: vec![0; bitmap_words],
 
-        Ok(Self {
-            distributor,
-            distributor_range,
-            redistributor_range,
-        })
-    }
+//             // One priority entry per interrupt.
+//             priority: vec![0; num_interrupts as usize],
+//         }
+//     }
+// }
 
-    fn contains(&self, address: u64) -> bool {
-        self.distributor_range.contains_addr(address)
-            || self.redistributor_range.contains_addr(address)
-    }
+// #[cfg(guest_arch = "aarch64")]
+// struct TmkGic {
+//     distributor: virt_support_gic::Distributor,
+//     distributor_range: MemoryRange,
+//     redistributor_range: MemoryRange,
+//     state: Mutex<GicState>,
+// }
 
-    fn read(&self, address: u64, data: &mut [u8]) -> bool {
-        self.distributor.read(address, data)
-    }
+// #[cfg(guest_arch = "aarch64")]
+// impl TmkGic {
+//     fn new(topology: &ProcessorTopology) -> anyhow::Result<Self> {
+//         let redistributors_base = match topology.gic_version() {
+//             GicVersion::V3 {
+//                 redistributors_base,
+//             } => redistributors_base,
+//             GicVersion::V2 { .. } => anyhow::bail!("TMK software GIC requires GICv3"),
+//         };
+//         let redistributors_size = aarch64defs::GIC_REDISTRIBUTOR_SIZE
+//             .checked_mul(u64::from(topology.vp_count()))
+//             .context("GIC redistributor range overflowed")?;
+//         let redistributors_end = redistributors_base
+//             .checked_add(redistributors_size)
+//             .context("GIC redistributor range overflowed")?;
+//         let redistributor_range = MemoryRange::new(redistributors_base..redistributors_end);
+//         let distributor_base = topology.gic_distributor_base();
+//         let distributor_end = distributor_base
+//             .checked_add(aarch64defs::GIC_DISTRIBUTOR_SIZE)
+//             .context("GIC distributor range overflowed")?;
+//         let distributor_range = MemoryRange::new(distributor_base..distributor_end);
 
-    fn write(&self, address: u64, data: &[u8]) -> bool {
-        self.distributor.write(address, data)
-    }
-}
+//         let num_interrupts = topology.gic_nr_irqs();
+
+//         let mut distributor = virt_support_gic::Distributor::new(
+//             distributor_base,
+//             redistributor_range,
+//             num_interrupts,
+//         );
+//         let vp_count = topology.vp_count() as usize;
+//         for (index, vp) in topology.vps_arch().enumerate() {
+//             distributor.add_redistributor(vp.mpidr.into(), index + 1 == vp_count);
+//         }
+
+//         Ok(Self {
+//             distributor,
+//             distributor_range,
+//             redistributor_range,
+//             state: Mutex::new(GicState::new(num_interrupts)),
+//         })
+//     }
+
+//     fn contains(&self, address: u64) -> bool {
+//         self.distributor_range.contains_addr(address)
+//             || self.redistributor_range.contains_addr(address)
+//     }
+
+//     fn read(&self, address: u64, data: &mut [u8]) -> bool {
+//         self.distributor.read(address, data)
+//     }
+
+//     fn write(&self, address: u64, data: &[u8]) -> bool {
+//         self.distributor.write(address, data)
+//     }
+
+//     fn set_pending(&self, intid: u32) -> bool {
+//         let word = (intid / 32) as usize;
+//         let bit = intid % 32;
+
+//         let mut state = self.state.lock().expect("GIC state mutex poisoned");
+
+//         let Some(pending) = state.pending.get_mut(word) else {
+//             return false;
+//         };
+
+//         *pending |= 1u32 << bit;
+//         true
+//     }
+
+//     fn next_pending_interrupt(
+//         &self,
+//         vp: VpIndex,
+//         running_priority: u8,
+//     ) -> Option<PendingInterrupt>;
+
+//     fn acknowledge(&self, vp: VpIndex, intid: u32);
+
+//     fn end_of_interrupt(&self, vp: VpIndex, intid: u32);
+// }
 
 #[cfg(all(target_os = "linux", guest_arch = "aarch64"))]
 mod cca {

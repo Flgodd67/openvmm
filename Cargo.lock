@@ -9349,6 +9349,7 @@ name = "virt_support_gic"
 version = "0.0.0"
 dependencies = [
  "aarch64defs",
+ "anyhow",
  "inspect",
  "memory_range",
  "parking_lot",
