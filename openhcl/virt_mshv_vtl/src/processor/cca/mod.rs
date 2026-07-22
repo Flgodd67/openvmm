@@ -515,7 +515,8 @@ impl BackingPrivate for CcaBacked {
                     }
                 }
                 PlaneExitReason::Irq => {
-                    // this.backing.cvm.gic.write(address, data);
+                    let running_priority = 0xff;
+                    let pending = this.shared.cvm.gic.next_pending_interrupt(VpIndex::BSP, running_priority);
                     if cca_exit.virtual_timer_asserted() {
                         let intid = this.shared.virt_timer_ppi;
                         if !inject_virtual_interrupt(
