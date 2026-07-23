@@ -460,3 +460,56 @@ fn are_interrupts_enabled() -> bool {
     }
     daif & DAIF_IRQ_MASK == 0
 }
+
+pub fn send_sgi_to_self(intid: u32) {
+    assert!(intid < 16, "SGI INTID must be in the range 0..16");
+
+    let mpidr = read_mpidr();
+
+    let aff0 = mpidr & 0xff;
+    let aff1 = (mpidr >> 8) & 0xff;
+    let aff2 = (mpidr >> 16) & 0xff;
+    let aff3 = (mpidr >> 32) & 0xff;
+
+    // ICC_SGI1R_EL1:
+    //
+    // Aff3       [55:48]
+    // RS         [47:44]
+    // IRM        [40]
+    // Aff2       [39:32]
+    // INTID      [27:24]
+    // Aff1       [23:16]
+    // TargetList [15:0]
+    //
+    // TargetList bit N targets the PE whose Aff0 is N.
+    assert!(aff0 < 16, "simple SGI target list only supports Aff0 < 16");
+
+    let value = (aff3 << 48)
+        | (aff2 << 32)
+        | (u64::from(intid) << 24)
+        | (aff1 << 16)
+        | (1u64 << aff0);
+
+    // SAFETY: The value encodes a Group 1 SGI targeting the current PE.
+    unsafe {
+        core::arch::asm!(
+            "msr ICC_SGI1R_EL1, {value}",
+            "isb",
+            value = in(reg) value,
+        );
+    }
+}
+
+fn read_mpidr() -> u64 {
+    let value: u64;
+
+    // SAFETY: Reading MPIDR_EL1 has no side effects.
+    unsafe {
+        core::arch::asm!(
+            "mrs {value}, MPIDR_EL1",
+            value = out(reg) value,
+        );
+    }
+
+    value
+}

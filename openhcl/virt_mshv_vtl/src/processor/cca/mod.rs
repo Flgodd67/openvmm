@@ -409,7 +409,7 @@ impl BackingPrivate for CcaBacked {
                             if iss.wnr() {
                                 // Handle MMIO write
                                 if let Some(value) = cca_exit.gpr_or_zero_register(srt) {
-                                    println!("address: {}, value: {}", address as u64, value);
+                                    // println!("address: {}, value: {}", address as u64, value);
                                     let mut v = value;
                                     if address as u64 == 4278321172 {
                                         v = value&!(1 << 2);
@@ -424,16 +424,6 @@ impl BackingPrivate for CcaBacked {
                                         .await;
                                     }
 
-                                    if address as u64 == 4278190080 || address as u64 == 4278321172 {
-                                        let mut value = [0u8; size_of::<u64>()];
-                                        dev.read_mmio(this.vp_index(), address, &mut value[..len])
-                                            .await;
-
-
-
-                                        let res = u64::from_ne_bytes(value);
-                                        println!("the RES: {}", res);
-                                    }
                                 } else {
                                     tracing::warn!(
                                         srt,

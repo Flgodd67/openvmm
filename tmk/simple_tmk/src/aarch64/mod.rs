@@ -61,73 +61,47 @@ fn virtual_timer_irq(t: TestContext<'_>) {
     );
 }
 
-// #[tmk_test]
-// fn gic_virtual_timer(t: TestContext<'_>) {
-//     // Use the INTID your plane1 virtual platform wires the timer to.
-//     //
-//     // You mentioned PPI 20, so use 20 if that is what the vGIC exposes.
-//     // For the architectural virtual timer on many GIC systems, this is often INTID 27.
-//     const TIMER_INTID: u32 = 20;
+#[tmk_test]
+fn sgi_irq(t: TestContext<'_>) {
+    const TEST_SGI: u32 = 5;
 
-//     let timer_fired = AtomicBool::new(false);
+    let sgi_fired = AtomicBool::new(false);
 
-//     let timer_isr = |ctx: &mut IrqContext| {
-//         log!("timer fired, intid={}", ctx.intid);
+    let sgi_isr = |ctx: &mut aarch64::IrqContext| {
+        if ctx.intid == TEST_SGI {
+            sgi_fired.store(true, Relaxed);
+        }
+    };
 
-//         assert_eq!(
-//             ctx.intid, TIMER_INTID,
-//             "unexpected interrupt ID"
-//         );
+    t.scope.subscope(|s| {
+        s.set_irq_handler(&sgi_isr);
+        s.enable_gic_irq(TEST_SGI);
 
-//         timer_fired.store(true, Relaxed);
-//     };
+        s.enable_interrupts();
 
-//     t.scope.subscope(|s| {
-//         // Install the plane1 IRQ callback.
-//         s.set_irq_handler(&timer_isr);
+        // Send SGI 5 to the current VP.
+        aarch64::send_sgi_to_self(TEST_SGI);
 
-//         log!("before enable_gic_for_current_vp called");
-//         // Enable this PPI in the vGIC Redistributor for this VP.
-//         s.enable_gic_irq(TIMER_INTID);
+        let frequency = aarch64::read_cntfrq();
+        let start = aarch64::read_cntvct();
+        let timeout_ticks = core::cmp::max(frequency, 1);
 
-//         // Program the virtual timer.
-//         let freq = read_cntfrq();
-//         let start = read_cntvct();
+        while !sgi_fired.load(Relaxed)
+            && aarch64::read_cntvct().wrapping_sub(start) < timeout_ticks
+        {
+            aarch64::poll_interrupts();
+            core::hint::spin_loop();
+        }
 
-//         // Fire after about 10 ms.
-//         let delay_ticks = freq / 100;
-//         let compare = start + delay_ticks;
+        s.disable_interrupts();
+        s.disable_gic_irq(TEST_SGI);
+    });
 
-//         set_virtual_timer_compare(compare);
-
-//         // Now allow IRQ exceptions to be taken.
-//         s.enable_interrupts();
-
-//         for _ in 0..1_000_000_000 {
-//             if timer_fired.load(Relaxed) {
-//                 break;
-//             }
-
-//             core::hint::spin_loop();
-//         }
-
-//         assert!(
-//             timer_fired.load(Relaxed),
-//             "virtual timer interrupt did not fire"
-//         );
-
-//         let now = read_cntvct();
-//         log!("start={}, compare={}, now={}", start, compare, now);
-
-//         assert!(
-//             now >= compare,
-//             "timer fired before the compare value"
-//         );
-
-//         disable_virtual_timer();
-//         s.disable_gic_irq(TIMER_INTID);
-//     });
-// }
+    assert!(
+        sgi_fired.load(Relaxed),
+        "software-generated interrupt did not fire"
+    );
+}
 
 core::arch::global_asm! {
     ".global instruction_abort_outside_par_entry",
