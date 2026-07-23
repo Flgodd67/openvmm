@@ -42,6 +42,7 @@ use virt::io::CpuIo;
 use virt_support_aarch64emu::translate::TranslationRegisters;
 use zerocopy::FromZeros;
 use std::sync::Arc;
+use std::cmp::min;
 
 #[derive(Debug, Error)]
 #[error("failed to run")]
@@ -82,9 +83,11 @@ const ICH_LR_VINTID_MASK: u64 = u32::MAX as u64;
 const ICH_LR_PRIORITY_SHIFT: u32 = 48;
 const ICH_LR_GROUP1: u64 = 1 << 60;
 const ICH_LR_PENDING: u64 = 1 << 62;
+const ICH_LR_ACTIVE: u64 = 2 << 62;
 const ICH_LR_STATE_MASK: u64 = 3 << 62;
 const DEFAULT_GIC_PRIORITY: u8 = 0x80;
 const RSI_PLANE_EXIT_INVALID: u64 = u64::MAX;
+const ICH_LR_PRIORITY_MASK: u64 = 0xff << ICH_LR_PRIORITY_SHIFT;
 
 // For use with Hyper-V synthetic interrupt controller allocated by paravisor.
 enum UhDirectOverlay {
@@ -244,6 +247,27 @@ fn inject_virtual_interrupt(lrs: &mut [u64], intid: u32) -> bool {
     true
 }
 
+fn running_priority(lrs: &[u64]) -> u8 {
+
+    let mut running = 0xff;
+
+    for &lr in lrs {
+
+        let state = lr & ICH_LR_STATE_MASK;
+
+        if state & ICH_LR_PENDING != ICH_LR_PENDING && state & ICH_LR_ACTIVE != ICH_LR_ACTIVE {
+            continue;
+        }
+
+        let priority = ((lr >> ICH_LR_PRIORITY_SHIFT) & ICH_LR_PRIORITY_MASK) as u8;
+
+        running = min(running, priority);
+
+    }
+
+    running
+}
+
 fn extend_mmio_read(data: [u8; size_of::<u64>()], len: usize, sign_extend: bool, sf: bool) -> u64 {
     let value = u64::from_ne_bytes(data);
     if sign_extend {
@@ -347,6 +371,8 @@ impl BackingPrivate for CcaBacked {
         // this.preserve_plane_context();
 
         if intercepted && this.runner.cca_rsi_plane_exit().exit_reason != RSI_PLANE_EXIT_INVALID {
+
+            let lrs = this.runner.cca_rsi_plane_exit().gicv3_lrs.clone();
 
             // Preserve the plane context, so we can restore it later.
             this.preserve_plane_context();
@@ -515,8 +541,14 @@ impl BackingPrivate for CcaBacked {
                     }
                 }
                 PlaneExitReason::Irq => {
-                    let running_priority = 0xff;
-                    let pending = this.shared.cvm.gic.next_pending_interrupt(VpIndex::BSP, running_priority);
+                    let pending = this.shared.cvm.gic.next_pending_interrupt(VpIndex::BSP, running_priority(
+                        &lrs
+                    ));
+                    if let Some(pend) = pending {
+                        println!("Pending interrupt[ intid: {}, priority: {} ]", pend.intid, pend.priority);
+                    } else {
+                        println!("No pending interrupt");
+                    }
                     if cca_exit.virtual_timer_asserted() {
                         let intid = this.shared.virt_timer_ppi;
                         if !inject_virtual_interrupt(
