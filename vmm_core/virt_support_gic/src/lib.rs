@@ -845,7 +845,6 @@ mod gicr {
         }
 
         fn sgi_write32(&self, address: GicrSgiRegister, data: u32) -> bool {
-            println!("in here for SGI interrupt test");
             match address {
                 GicrSgiRegister::IGROUPR0 => self.mutable.lock().group = data,
                 GicrSgiRegister::ISACTIVER0 => self.mutable.lock().active |= data,
@@ -1007,10 +1006,13 @@ use vm_topology::processor::aarch64::GicVersion;
 use vm_topology::processor::VpIndex;
 use vm_topology::memory::MemoryLayout;
 use inspect::Inspect;
+use aarch64defs::SystemReg;
 
 #[derive(Inspect)]
 pub struct TmkGic {
     distributor: Distributor,
+    #[inspect(skip)]
+    redistributors: Vec<Mutex<Redistributor>>,
     distributor_range: MemoryRange,
     redistributor_range: MemoryRange,
 
@@ -1046,13 +1048,21 @@ impl TmkGic {
             redistributor_range,
             num_interrupts,
         );
+        let mut redistributors: Vec<Redistributor> = vec![];
         let vp_count = topology.vp_count() as usize;
         for (index, vp) in topology.vps_arch().enumerate() {
-            distributor.add_redistributor(vp.mpidr.into(), index + 1 == vp_count);
+            let gicr = distributor.add_redistributor(vp.mpidr.into(), index + 1 == vp_count);
+            redistributors.push(gicr);
         }
+
+        let redistributors = redistributors
+                .into_iter()
+                .map(Mutex::new)
+                .collect();
 
         Ok(Self {
             distributor,
+            redistributors,
             distributor_range,
             redistributor_range,
             state: Mutex::new(GicState::new(num_interrupts)),
@@ -1070,6 +1080,18 @@ impl TmkGic {
 
     pub fn write(&self, address: u64, data: &[u8]) -> bool {
         self.distributor.write(address, data)
+    }
+
+    pub fn write_sysreg(
+            &self,
+            reg: SystemReg,
+            value: u64,
+            wake: impl FnMut(usize),
+    ) -> bool {
+        let vp_index = 0 as usize;
+
+        let mut gicr = self.redistributors[vp_index].lock().expect("redistributor mutex error");
+        self.distributor.write_sysreg(&mut gicr, reg, value, wake)
     }
 
     pub fn next_pending_interrupt(

@@ -21,6 +21,7 @@ use aarch64defs::HpfarEl2;
 use aarch64defs::InstructionAbortReason;
 use aarch64defs::IssDataAbort;
 use aarch64defs::IssInstructionAbort;
+use aarch64defs::IssSystem;
 use aarch64defs::SystemReg;
 use aarch64defs::rsi::cca_rsi_plane_exit;
 use hcl::GuestVtl;
@@ -527,19 +528,44 @@ impl BackingPrivate for CcaBacked {
                     }
                 }
                 PlaneExitReason::Irq => {
-                    println!("in IRQ");
+
+                    let iss = IssSystem::from(esr_el2.iss());
+
+                    if iss.is_write() && iss.system_reg() == SystemReg::ICC_SGI1R_EL1 {
+                        let value = if iss.rt() == 31 {
+                            0
+                        } else {
+                            cca_exit.0.gprs[iss.rt() as usize]
+                        };
+
+                        this.shared.cvm.gic.write_sysreg(iss.system_reg(), value, |_target_vp| {});
+                    }
+
+                    let virtual_timer_asserted = cca_exit.virtual_timer_asserted();
+                    let lrs = &mut this.runner.cca_rsi_plane_entry().gicv3_lrs;
+
                     let pending = this.shared.cvm.gic.next_pending_interrupt(VpIndex::BSP, running_priority(
-                        &lrs
+                        lrs
                     ));
                     if let Some(pend) = pending {
                         println!("Pending interrupt[ intid: {}, priority: {} ]", pend.intid, pend.priority);
+
+                        if !inject_virtual_interrupt(
+                            lrs,
+                            pend.intid,
+                        ) {
+                            return Err(dev.fatal_error(
+                                CcaUnsupportedExit::NoFreeGicListRegister(pend.intid).into(),
+                            ));
+                        }
+
                     } else {
                         println!("No pending interrupt");
                     }
-                    if cca_exit.virtual_timer_asserted() {
+                    if virtual_timer_asserted {
                         let intid = this.shared.virt_timer_ppi;
                         if !inject_virtual_interrupt(
-                            &mut this.runner.cca_rsi_plane_entry().gicv3_lrs,
+                            lrs,
                             intid,
                         ) {
                             return Err(dev.fatal_error(

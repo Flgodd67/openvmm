@@ -444,6 +444,16 @@ impl IssSystem {
                 .with_op2(self.op2()),
         )
     }
+
+    /// The trapped instruction reads from the system register, such as MRS.
+    pub const fn is_read(&self) -> bool {
+        self.direction()
+    }
+
+    /// The trapped instruction writes to the system register, such as MSR.
+    pub const fn is_write(&self) -> bool {
+        !self.direction()
+    }
 }
 
 #[bitfield(u32)]
