@@ -411,18 +411,14 @@ impl BackingPrivate for CcaBacked {
                                 if let Some(value) = cca_exit.gpr_or_zero_register(srt) {
                                     // println!("address: {}, value: {}", address as u64, value);
                                     let mut v = value;
-                                    if address as u64 == 4278321172 {
-                                        v = value&!(1 << 2);
-                                        print!("V: {}", v);
 
-                                    } else {
-                                        dev.write_mmio(
-                                            this.vp_index(),
-                                            address,
-                                            &v.to_ne_bytes()[..len],
-                                        )
-                                        .await;
-                                    }
+                                    dev.write_mmio(
+                                        this.vp_index(),
+                                        address,
+                                        &v.to_ne_bytes()[..len],
+                                    )
+                                    .await;
+
 
                                 } else {
                                     tracing::warn!(
@@ -531,6 +527,7 @@ impl BackingPrivate for CcaBacked {
                     }
                 }
                 PlaneExitReason::Irq => {
+                    println!("in IRQ");
                     let pending = this.shared.cvm.gic.next_pending_interrupt(VpIndex::BSP, running_priority(
                         &lrs
                     ));

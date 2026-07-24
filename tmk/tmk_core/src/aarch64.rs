@@ -490,6 +490,8 @@ pub fn send_sgi_to_self(intid: u32) {
         | (aff1 << 16)
         | (1u64 << aff0);
 
+    log!("before ICC_SGI1R_EL1 write: value={:#x}", value);
+
     // SAFETY: The value encodes a Group 1 SGI targeting the current PE.
     unsafe {
         core::arch::asm!(
@@ -498,6 +500,8 @@ pub fn send_sgi_to_self(intid: u32) {
             value = in(reg) value,
         );
     }
+
+    log!("after ICC_SGI1R_EL1 write");
 }
 
 fn read_mpidr() -> u64 {

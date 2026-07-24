@@ -468,7 +468,7 @@ mod gicd {
             let state = self.state.lock();
 
             let mut best: Option<PendingInterrupt> = None;
-            println!("n: {} | pending lenght: {}", n, state.pending.len());
+
             for i in 1..state.pending.len() {
                 let mut cand: u32 = state.pending[i] & state.enable[i] & !state.active[i] & state.group[i];
                 while cand != 0 {
@@ -845,6 +845,7 @@ mod gicr {
         }
 
         fn sgi_write32(&self, address: GicrSgiRegister, data: u32) -> bool {
+            println!("in here for SGI interrupt test");
             match address {
                 GicrSgiRegister::IGROUPR0 => self.mutable.lock().group = data,
                 GicrSgiRegister::ISACTIVER0 => self.mutable.lock().active |= data,
