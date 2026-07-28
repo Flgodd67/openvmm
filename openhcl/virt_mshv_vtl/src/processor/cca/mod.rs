@@ -190,9 +190,9 @@ impl From<u64> for PlaneExitReason {
 
 /// A wrapper around the CCA RSI plane exit structure, providing methods to
 /// access information regarding the exit of the plane.
-struct CcaExit<'a>(&'a cca_rsi_plane_exit);
+struct CcaExit(cca_rsi_plane_exit);
 
-impl<'a> CcaExit<'a> {
+impl CcaExit {
     fn exit_reason(&self) -> PlaneExitReason {
         self.0.exit_reason.into()
     }
@@ -242,7 +242,7 @@ fn inject_virtual_interrupt(lrs: &mut [u64], interrupt: PendingInterrupt) -> boo
         return false;
     };
 
-    let group = if interrupt.group == 1 { ICH_LR_GROUP1 } else { 0 };
+    let group = if interrupt.group1 { ICH_LR_GROUP1 } else { 0 };
 
     *lr = u64::from(interrupt.intid)
         | (u64::from(DEFAULT_GIC_PRIORITY) << ICH_LR_PRIORITY_SHIFT)
@@ -385,7 +385,7 @@ impl BackingPrivate for CcaBacked {
             // just enough to get the TMK running.
             // TODO: CCA: NEXT: document how we integrate with the wider emulation
             // system.
-            let cca_exit = CcaExit(this.runner.cca_rsi_plane_exit());
+            let cca_exit = CcaExit(*this.runner.cca_rsi_plane_exit());
             let exit_reason = cca_exit.exit_reason();
             let esr_el2 = cca_exit.esr_el2();
             match exit_reason {
@@ -531,27 +531,9 @@ impl BackingPrivate for CcaBacked {
                 PlaneExitReason::Irq => {
 
                     this.handle_irq_sources(&cca_exit, esr_el2);
-                    let lrs = &mut this.runner.cca_rsi_plane_entry().gicv3_lrs;
 
-                    let vp_index = this.vp_index();
-                    let pending = this.shared.cvm.gic.next_pending_interrupt(vp_index, running_priority(
-                        lrs
-                    ));
-                    if let Some(pend) = pending {
-                        println!("Pending interrupt[ intid: {}, priority: {} ]", pend.intid, pend.priority);
-
-                        if !inject_virtual_interrupt(
-                            lrs,
-                            pend,
-                        ) {
-                            return Err(dev.fatal_error(
-                                CcaUnsupportedExit::NoFreeGicListRegister(pend.intid).into(),
-                            ));
-                        }
-
-                    } else {
-                        println!("No pending interrupt");
-                    }
+                    UhProcessor::<'_, CcaBacked>::refill_virtual_interrupts(&this.shared.cvm.gic, this.vp_index(), &mut this.runner.cca_rsi_plane_entry().gicv3_lrs)
+                        .map_err(|intid| dev.fatal_error(CcaUnsupportedExit::NoFreeGicListRegister(intid).into()))?;
                 }
                 PlaneExitReason::Unknown(exit_reason) => {
                     tracing::warn!(exit_reason, "unsupported CCA plane exit reason");
@@ -666,7 +648,7 @@ impl UhProcessor<'_, CcaBacked> {
 
     fn handle_irq_sources(
         &mut self,
-        cca_exit: &CcaExit<'_>,
+        cca_exit: &CcaExit,
         esr_el2: EsrEl2,
     ) -> Result<(), VpHaltReason> {
         self.handle_gic_sysreg_write(cca_exit, esr_el2)?;
@@ -674,10 +656,9 @@ impl UhProcessor<'_, CcaBacked> {
         if cca_exit.virtual_timer_asserted() {
             let intid = self.shared.virt_timer_ppi;
 
-            if !self.shared.cvm.gic.raise_ppi(this.vp_index(), intid) {
+            if !self.shared.cvm.gic.raise_ppi(self.vp_index(), intid) {
                 tracing::trace!(
                     intid,
-                    vp = this.vp_index().0,
                     "virtual timer PPI was already pending or VP was invalid"
                 );
             }
@@ -688,9 +669,10 @@ impl UhProcessor<'_, CcaBacked> {
 
     fn handle_gic_sysreg_write(
         &mut self,
-        cca_exit: &CcaExit<'_>,
+        cca_exit: &CcaExit,
         esr_el2: EsrEl2,
     ) -> Result<(), VpHaltReason> {
+
         let iss = IssSystem::from(esr_el2.iss());
 
         if !iss.is_write() {
@@ -728,6 +710,40 @@ impl UhProcessor<'_, CcaBacked> {
         }
 
         Ok(())
+    }
+
+    fn refill_virtual_interrupts(
+        gic: &TmkGic,
+        vp: VpIndex,
+        lrs: &mut [u64],
+    ) -> Result<(), u32> {
+        loop {
+            if !lrs
+                .iter()
+                .any(|lr| lr & ICH_LR_STATE_MASK == 0)
+            {
+                return Ok(());
+            }
+
+            let running_priority = running_priority(lrs);
+
+            let Some(pending) =
+                gic.next_pending_interrupt(vp, running_priority)
+            else {
+                return Ok(());
+            };
+
+            tracing::debug!(
+                intid = pending.intid,
+                priority = pending.priority,
+                group1 = pending.group1,
+                "injecting pending virtual interrupt"
+            );
+
+            if !inject_virtual_interrupt(lrs, pending) {
+                return Err(pending.intid);
+            }
+        }
     }
 
     // TODO: CCA: lots of stuff might be needed based on the TDX implementation, something akin to:

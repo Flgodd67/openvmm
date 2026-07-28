@@ -73,7 +73,7 @@ pub struct cca_rsi_plane_entry {
 
 /// Flattened RSI plane exit buffer layout.
 #[repr(C)]
-#[derive(IntoBytes, Immutable, KnownLayout, FromBytes, Debug)]
+#[derive(IntoBytes, Immutable, KnownLayout, FromBytes, Debug, Clone, Copy)]
 pub struct cca_rsi_plane_exit {
     pub exit_reason: u64,
     pub pad1: [u8; 0x100 - 8],

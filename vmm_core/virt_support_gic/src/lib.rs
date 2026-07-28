@@ -9,6 +9,7 @@
 pub use gicd::Distributor;
 pub use gicr::Redistributor;
 
+#[derive(Clone, Copy)]
 pub struct PendingInterrupt {
     pub intid: u32,
     pub priority: u8,
@@ -1100,6 +1101,10 @@ impl TmkGic {
         running_priority: u8,
     ) -> Option<PendingInterrupt> {
         self.distributor.next_pending_interrupt(vp,running_priority)
+    }
+
+    pub fn raise_ppi(&self, vp: VpIndex, intid: u32) -> bool {
+        self.distributor.raise_ppi(vp, intid)
     }
 
     // fn acknowledge(&self, vp: VpIndex, intid: u32){
