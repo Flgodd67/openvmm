@@ -34,6 +34,7 @@ use hv1_structs::VtlArray;
 use hvdef::HvRegisterCrInterceptControl;
 use inspect::Inspect;
 use inspect::InspectMut;
+use virt_support_gic::PendingInterrupt;
 use virt_support_gic::TmkGic;
 use virt::VpHaltReason;
 use virt::VpIndex;
@@ -229,10 +230,10 @@ impl<'a> CcaExit<'a> {
     }
 }
 
-fn inject_virtual_interrupt(lrs: &mut [u64], intid: u32) -> bool {
+fn inject_virtual_interrupt(lrs: &mut [u64], interrupt: PendingInterrupt) -> bool {
     if lrs
         .iter()
-        .any(|lr| *lr & ICH_LR_STATE_MASK != 0 && *lr & ICH_LR_VINTID_MASK == u64::from(intid))
+        .any(|lr| *lr & ICH_LR_STATE_MASK != 0 && *lr & ICH_LR_VINTID_MASK == u64::from(interrupt.intid))
     {
         return true;
     }
@@ -241,9 +242,11 @@ fn inject_virtual_interrupt(lrs: &mut [u64], intid: u32) -> bool {
         return false;
     };
 
-    *lr = u64::from(intid)
+    let group = if interrupt.group == 1 { ICH_LR_GROUP1 } else { 0 };
+
+    *lr = u64::from(interrupt.intid)
         | (u64::from(DEFAULT_GIC_PRIORITY) << ICH_LR_PRIORITY_SHIFT)
-        | ICH_LR_GROUP1
+        | group
         | ICH_LR_PENDING;
     true
 }
@@ -410,13 +413,11 @@ impl BackingPrivate for CcaBacked {
                             if iss.wnr() {
                                 // Handle MMIO write
                                 if let Some(value) = cca_exit.gpr_or_zero_register(srt) {
-                                    // println!("address: {}, value: {}", address as u64, value);
-                                    let mut v = value;
 
                                     dev.write_mmio(
                                         this.vp_index(),
                                         address,
-                                        &v.to_ne_bytes()[..len],
+                                        &value.to_ne_bytes()[..len],
                                     )
                                     .await;
 
@@ -529,22 +530,11 @@ impl BackingPrivate for CcaBacked {
                 }
                 PlaneExitReason::Irq => {
 
-                    let iss = IssSystem::from(esr_el2.iss());
-
-                    if iss.is_write() && iss.system_reg() == SystemReg::ICC_SGI1R_EL1 {
-                        let value = if iss.rt() == 31 {
-                            0
-                        } else {
-                            cca_exit.0.gprs[iss.rt() as usize]
-                        };
-
-                        this.shared.cvm.gic.write_sysreg(iss.system_reg(), value, |_target_vp| {});
-                    }
-
-                    let virtual_timer_asserted = cca_exit.virtual_timer_asserted();
+                    this.handle_irq_sources(&cca_exit, esr_el2);
                     let lrs = &mut this.runner.cca_rsi_plane_entry().gicv3_lrs;
 
-                    let pending = this.shared.cvm.gic.next_pending_interrupt(VpIndex::BSP, running_priority(
+                    let vp_index = this.vp_index();
+                    let pending = this.shared.cvm.gic.next_pending_interrupt(vp_index, running_priority(
                         lrs
                     ));
                     if let Some(pend) = pending {
@@ -552,7 +542,7 @@ impl BackingPrivate for CcaBacked {
 
                         if !inject_virtual_interrupt(
                             lrs,
-                            pend.intid,
+                            pend,
                         ) {
                             return Err(dev.fatal_error(
                                 CcaUnsupportedExit::NoFreeGicListRegister(pend.intid).into(),
@@ -561,20 +551,6 @@ impl BackingPrivate for CcaBacked {
 
                     } else {
                         println!("No pending interrupt");
-                    }
-                    if virtual_timer_asserted {
-                        let intid = this.shared.virt_timer_ppi;
-                        if !inject_virtual_interrupt(
-                            lrs,
-                            intid,
-                        ) {
-                            return Err(dev.fatal_error(
-                                CcaUnsupportedExit::NoFreeGicListRegister(intid).into(),
-                            ));
-                        }
-                        tracing::debug!(intid, "injected CCA virtual timer interrupt");
-                    } else {
-                        tracing::trace!("CCA IRQ exit had no asserted virtual timer");
                     }
                 }
                 PlaneExitReason::Unknown(exit_reason) => {
@@ -686,6 +662,72 @@ impl UhProcessor<'_, CcaBacked> {
 
     pub fn tmk_gic(&self) -> Arc<TmkGic> {
         Arc::clone(&self.partition.backing_shared.cvm_state().unwrap().gic)
+    }
+
+    fn handle_irq_sources(
+        &mut self,
+        cca_exit: &CcaExit<'_>,
+        esr_el2: EsrEl2,
+    ) -> Result<(), VpHaltReason> {
+        self.handle_gic_sysreg_write(cca_exit, esr_el2)?;
+
+        if cca_exit.virtual_timer_asserted() {
+            let intid = self.shared.virt_timer_ppi;
+
+            if !self.shared.cvm.gic.raise_ppi(this.vp_index(), intid) {
+                tracing::trace!(
+                    intid,
+                    vp = this.vp_index().0,
+                    "virtual timer PPI was already pending or VP was invalid"
+                );
+            }
+        }
+
+        Ok(())
+    }
+
+    fn handle_gic_sysreg_write(
+        &mut self,
+        cca_exit: &CcaExit<'_>,
+        esr_el2: EsrEl2,
+    ) -> Result<(), VpHaltReason> {
+        let iss = IssSystem::from(esr_el2.iss());
+
+        if !iss.is_write() {
+            return Ok(());
+        }
+
+        let reg = iss.system_reg();
+
+        if !matches!(
+            reg,
+            SystemReg::ICC_SGI0R_EL1 | SystemReg::ICC_SGI1R_EL1
+        ) {
+            return Ok(());
+        }
+
+        let value = match iss.rt() {
+            31 => 0,
+            rt => cca_exit.0.gprs[rt as usize],
+        };
+
+        let handled = self
+            .shared
+            .cvm
+            .gic
+            .write_sysreg(reg, value, |target_vp| {
+                tracing::trace!(
+                    target_vp,
+                    ?reg,
+                    "GIC sysreg write raised an interrupt"
+                );
+            });
+
+        if !handled {
+            tracing::warn!(?reg, value, "unhandled GIC system-register write");
+        }
+
+        Ok(())
     }
 
     // TODO: CCA: lots of stuff might be needed based on the TDX implementation, something akin to:
